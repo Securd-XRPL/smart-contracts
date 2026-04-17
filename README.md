@@ -161,6 +161,18 @@ Workflow files:
 - [.github/workflows/cd.yml](.github/workflows/cd.yml)
 - [.github/workflows/release.yml](.github/workflows/release.yml)
 
+Recommended GitHub Actions configuration:
+
+- keep sensitive values in GitHub `secrets`
+  - `DEPLOYER_PRIVATE_KEY`
+  - `XRPL_EVM_RPC_URL` if your provider URL is private
+- keep non-sensitive deployment configuration in GitHub environment `vars`
+  - chain ids
+  - contract addresses
+  - owner/admin addresses
+  - deployment file paths
+  - numeric protocol parameters
+
 Current tested scope includes:
 
 - XRPL-Axelar signed-intent execution and replay protection
