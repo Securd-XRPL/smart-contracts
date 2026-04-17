@@ -147,6 +147,20 @@ Coverage threshold enforcement:
   - branches: `55%`
   - lines: `78%`
 
+## CI/CD
+
+The repository includes GitHub Actions workflows for:
+
+- `CI`: compile, unit tests, integration tests, property tests, LP-oracle tests, config validation, and coverage
+- `CD`: manual environment-gated deployment and verification actions for testnet and mainnet
+- `Release`: GitHub release creation from version tags such as `v0.1.0`
+
+Workflow files:
+
+- [.github/workflows/ci.yml](.github/workflows/ci.yml)
+- [.github/workflows/cd.yml](.github/workflows/cd.yml)
+- [.github/workflows/release.yml](.github/workflows/release.yml)
+
 Current tested scope includes:
 
 - XRPL-Axelar signed-intent execution and replay protection

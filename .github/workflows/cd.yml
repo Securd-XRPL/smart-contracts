@@ -1,0 +1,130 @@
+name: CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target deployment environment"
+        required: true
+        type: choice
+        options:
+          - testnet
+          - mainnet
+      action:
+        description: "Deployment action"
+        required: true
+        type: choice
+        options:
+          - deploy-full-stack
+          - deploy-keeper
+          - deploy-median-oracle-reporter
+          - verify-deployment
+          - smoke-deployment
+          - validate-only
+      deployment_record_file:
+        description: "Deployment record path for verify/smoke actions"
+        required: false
+        default: "deployments/xrpl-evm-testnet.example.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.event.inputs.environment }}-${{ github.event.inputs.action }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate local config and scripts
+        run: |
+          npm run typecheck
+          npm run validate:liquidation-config
+          npm run validate:lp-oracle-config
+          npm run validate:deploy-inputs
+
+      - name: Export deployment environment
+        shell: bash
+        run: |
+          {
+            echo "XRPL_EVM_RPC_URL=${{ secrets.XRPL_EVM_RPC_URL }}"
+            echo "XRPL_EVM_CHAIN_ID=${{ secrets.XRPL_EVM_CHAIN_ID }}"
+            echo "DEPLOYER_PRIVATE_KEY=${{ secrets.DEPLOYER_PRIVATE_KEY }}"
+            echo "DEPLOY_OWNER=${{ secrets.DEPLOY_OWNER }}"
+            echo "SECURD_PENDING_ADMIN=${{ secrets.SECURD_PENDING_ADMIN }}"
+            echo "AXELAR_GATEWAY=${{ secrets.AXELAR_GATEWAY }}"
+            echo "INTERCHAIN_TOKEN_SERVICE=${{ secrets.INTERCHAIN_TOKEN_SERVICE }}"
+            echo "XRPL_DESTINATION_CHAIN=${{ secrets.XRPL_DESTINATION_CHAIN }}"
+            echo "XRPL_EGRESS_GAS_VALUE=${{ secrets.XRPL_EGRESS_GAS_VALUE }}"
+            echo "SECURD_PAUSE_GUARDIAN=${{ secrets.SECURD_PAUSE_GUARDIAN }}"
+            echo "SECURD_BORROW_CAP_GUARDIAN=${{ secrets.SECURD_BORROW_CAP_GUARDIAN }}"
+            echo "BAND_STD_REFERENCE=${{ secrets.BAND_STD_REFERENCE }}"
+            echo "SECURD_CLOSE_FACTOR_MANTISSA=${{ secrets.SECURD_CLOSE_FACTOR_MANTISSA }}"
+            echo "SECURD_LIQUIDATION_INCENTIVE_MANTISSA=${{ secrets.SECURD_LIQUIDATION_INCENTIVE_MANTISSA }}"
+            echo "SECURD_IRM_BASE_RATE_PER_YEAR=${{ secrets.SECURD_IRM_BASE_RATE_PER_YEAR }}"
+            echo "SECURD_IRM_MULTIPLIER_PER_YEAR=${{ secrets.SECURD_IRM_MULTIPLIER_PER_YEAR }}"
+            echo "SECURD_IRM_JUMP_MULTIPLIER_PER_YEAR=${{ secrets.SECURD_IRM_JUMP_MULTIPLIER_PER_YEAR }}"
+            echo "SECURD_IRM_KINK=${{ secrets.SECURD_IRM_KINK }}"
+            echo "SECURD_MARKETS_FILE=${{ secrets.SECURD_MARKETS_FILE }}"
+            echo "XRPL_TRUSTED_GMP_SOURCES_FILE=${{ secrets.XRPL_TRUSTED_GMP_SOURCES_FILE }}"
+            echo "XRPL_TRUSTED_ITS_SOURCES_FILE=${{ secrets.XRPL_TRUSTED_ITS_SOURCES_FILE }}"
+            echo "DEPLOYMENT_OUTPUT_FILE=${{ secrets.DEPLOYMENT_OUTPUT_FILE }}"
+            echo "KEEPER_OWNER=${{ secrets.KEEPER_OWNER }}"
+            echo "KEEPER_EXECUTORS=${{ secrets.KEEPER_EXECUTORS }}"
+            echo "KEEPER_ASSET_LIMITS=${{ secrets.KEEPER_ASSET_LIMITS }}"
+            echo "KEEPER_MARKET_LIMITS=${{ secrets.KEEPER_MARKET_LIMITS }}"
+            echo "MEDIAN_REPORTER_OWNER=${{ secrets.MEDIAN_REPORTER_OWNER }}"
+            echo "MEDIAN_REPORTER_FALLBACK_ORACLE=${{ secrets.MEDIAN_REPORTER_FALLBACK_ORACLE }}"
+            echo "MEDIAN_REPORTER_ASSET_CONFIGS=${{ secrets.MEDIAN_REPORTER_ASSET_CONFIGS }}"
+            echo "MEDIAN_REPORTER_REPORTERS=${{ secrets.MEDIAN_REPORTER_REPORTERS }}"
+            echo "SECURD_DEPLOY_MEDIAN_ORACLE_REPORTER=${{ secrets.SECURD_DEPLOY_MEDIAN_ORACLE_REPORTER }}"
+            echo "SECURD_MEDIAN_REPORTER_OWNER=${{ secrets.SECURD_MEDIAN_REPORTER_OWNER }}"
+            echo "SECURD_MEDIAN_REPORTER_CONFIG=${{ secrets.SECURD_MEDIAN_REPORTER_CONFIG }}"
+            echo "SECURD_MEDIAN_REPORTER_REPORTERS=${{ secrets.SECURD_MEDIAN_REPORTER_REPORTERS }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Validate only
+        if: ${{ github.event.inputs.action == 'validate-only' }}
+        run: echo "Validation completed successfully."
+
+      - name: Deploy full stack
+        if: ${{ github.event.inputs.action == 'deploy-full-stack' }}
+        run: npm run deploy:full-stack
+
+      - name: Deploy keeper
+        if: ${{ github.event.inputs.action == 'deploy-keeper' }}
+        run: npm run deploy:keeper
+
+      - name: Deploy median oracle reporter
+        if: ${{ github.event.inputs.action == 'deploy-median-oracle-reporter' }}
+        run: npm run deploy:median-oracle-reporter
+
+      - name: Verify deployment
+        if: ${{ github.event.inputs.action == 'verify-deployment' }}
+        env:
+          DEPLOYMENT_RECORD_FILE: ${{ github.event.inputs.deployment_record_file }}
+        run: npm run verify:deployment
+
+      - name: Smoke deployment
+        if: ${{ github.event.inputs.action == 'smoke-deployment' }}
+        env:
+          DEPLOYMENT_RECORD_FILE: ${{ github.event.inputs.deployment_record_file }}
+        run: npm run smoke:deployment
