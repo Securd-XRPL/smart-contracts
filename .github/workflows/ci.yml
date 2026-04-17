@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Property tests
+        run: npm run test:properties
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Validate liquidation bot config
+        run: npm run validate:liquidation-config
+
+      - name: Validate deployment inputs
+        run: npm run validate:deploy-inputs
+
+      - name: Validate deployment record schema
+        run: npm run validate:deployment-record
+
+      - name: Coverage
+        run: npm run coverage
+
+      - name: Coverage thresholds
+        run: npm run coverage:check
+
+
+  full-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full test suite
+        run: npm run test

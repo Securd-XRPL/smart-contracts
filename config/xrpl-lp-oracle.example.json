@@ -1,0 +1,47 @@
+{
+  "rpc": {
+    "xrplRpcUrl": "https://xrplcluster.com",
+    "xrplEvmRpcUrl": "https://rpc.xrplevm.org"
+  },
+  "wallet": {
+    "publisherPrivateKeyEnv": "LP_ORACLE_PRIVATE_KEY"
+  },
+  "defaults": {
+    "pollIntervalMs": 15000,
+    "publishIntervalSec": 120,
+    "minDeviationBps": 100,
+    "maxPriceAgeSec": 180,
+    "maxReserveJumpBps": 1500,
+    "maxStepUpBps": 500,
+    "maxStepDownBps": 1000
+  },
+  "alerts": {
+    "webhookUrlEnv": "LP_ORACLE_ALERT_WEBHOOK",
+    "logErrors": true
+  },
+  "pools": [
+    {
+      "name": "XRPL-USDC-XRP",
+      "xrpl": {
+        "asset0": {
+          "currency": "XRP"
+        },
+        "asset1": {
+          "currency": "USD",
+          "issuer": "rIssuerAddress"
+        }
+      },
+      "evm": {
+        "collateralAsset": "0x0000000000000000000000000000000000000001",
+        "underlyingDecimals": 18,
+        "token0": "0x0000000000000000000000000000000000000010",
+        "token1": "0x0000000000000000000000000000000000000020"
+      },
+      "risk": {
+        "haircutBps": 800,
+        "minTvlUsd": "500000",
+        "maxTokenWeightBps": 8500
+      }
+    }
+  ]
+}

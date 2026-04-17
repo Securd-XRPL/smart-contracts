@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "recordPath": "deployments/xrpl-evm-mainnet.example.json",
+  "digest": "0x1ae6b8a48c149a3b885818799b9ca398635c0e29a9e223a5850d8035e7e86fa7",
+  "signer": "0x5cbD96D161520ba4fb45F76631C2b2Ad1C7612f0",
+  "signature": "0x0bd683c9270ad2314714fb664897c2dd9dd10bdaa6d2ddc8f9f043d3efa4b41f7563ccc92ff4b2d76f154af9f1d840b374818f28681630f7863e718371278b401c",
+  "signedAt": "2026-04-17T15:06:52.851Z"
+}

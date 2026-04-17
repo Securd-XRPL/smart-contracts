@@ -1,0 +1,34 @@
+[
+  {
+    "underlying": "0x0000000000000000000000000000000000000001",
+    "cTokenName": "Securd XRPL USD Coin",
+    "cTokenSymbol": "sUSDC",
+    "cTokenDecimals": 8,
+    "initialExchangeRateMantissa": "1000000000000000000",
+    "collateralFactorMantissa": "750000000000000000",
+    "borrowCap": "500000000000",
+    "bridgeTokenIdLabel": "USDC",
+    "listOnBridge": true,
+    "oracle": {
+      "type": "CHAINLINK",
+      "chainlinkFeed": "0x0000000000000000000000000000000000000101",
+      "chainlinkHeartbeat": "3600"
+    }
+  },
+  {
+    "underlying": "0x0000000000000000000000000000000000000002",
+    "cTokenName": "Securd XRPL LP USD XRP",
+    "cTokenSymbol": "sXRPLLP",
+    "cTokenDecimals": 8,
+    "initialExchangeRateMantissa": "1000000000000000000",
+    "collateralFactorMantissa": "500000000000000000",
+    "borrowCap": "0",
+    "bridgeTokenIdLabel": "XRPL-LP-USD-XRP",
+    "listOnBridge": true,
+    "oracle": {
+      "type": "FALLBACK",
+      "fallbackMaxDelay": "900",
+      "initialFallbackPrice": "1000000000000000000"
+    }
+  }
+]

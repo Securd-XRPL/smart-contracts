@@ -1,0 +1,7 @@
+[
+  {
+    "chain": "xrpl-ledger",
+    "address": "source-app",
+    "encoding": "utf8"
+  }
+]

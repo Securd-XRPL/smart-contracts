@@ -1,0 +1,84 @@
+{
+  "network": {
+    "name": "xrpl-evm-mainnet",
+    "chainId": 1440002,
+    "rpcUrls": [
+      "https://rpc.example.xrplevm.org"
+    ],
+    "finalityConfirmations": 3
+  },
+  "protocol": {
+    "unitroller": "0x0000000000000000000000000000000000000000",
+    "comptroller": "0x0000000000000000000000000000000000000000",
+    "oracle": "0x0000000000000000000000000000000000000000",
+    "keeperWrapper": "0x0000000000000000000000000000000000000000"
+  },
+  "wallets": [
+    {
+      "name": "primary-liquidator",
+      "address": "0x0000000000000000000000000000000000000000",
+      "executorType": "wrapper"
+    }
+  ],
+  "profitability": {
+    "minimumProfitUsd": "250",
+    "gasCostUsdBuffer": "25",
+    "operationalBufferUsd": "50"
+  },
+  "risk": {
+    "maxConcurrentLiquidations": 3,
+    "maxRepayUsdPerTx": "25000",
+    "maxRepayUsdPerAsset": {
+      "USDC": "50000",
+      "USDT": "30000",
+      "XRP": "20000"
+    },
+    "maxCollateralExposureUsd": {
+      "standard": "100000",
+      "lp_fallback": "25000"
+    }
+  },
+  "oraclePolicies": {
+    "chainlinkMaxAgeSeconds": 3600,
+    "bandMaxAgeSeconds": 1800,
+    "fallbackDefaultMaxAgeSeconds": 900,
+    "requireNonZeroPrice": true
+  },
+  "assetPolicies": [
+    {
+      "symbol": "USDC",
+      "underlying": "0x0000000000000000000000000000000000000001",
+      "borrowedMarket": "0x0000000000000000000000000000000000000011",
+      "internalHaircutBps": 500,
+      "maxRepayAmount": "50000",
+      "allowAsRepayAsset": true,
+      "allowAsSeizedCollateral": true,
+      "oracleMode": "CHAINLINK"
+    },
+    {
+      "symbol": "XRPL-LP-USD-XRP",
+      "underlying": "0x0000000000000000000000000000000000000002",
+      "borrowedMarket": "0x0000000000000000000000000000000000000012",
+      "internalHaircutBps": 2000,
+      "maxRepayAmount": "10000",
+      "allowAsRepayAsset": false,
+      "allowAsSeizedCollateral": true,
+      "oracleMode": "FALLBACK",
+      "fallbackMaxAgeSeconds": 600,
+      "requireManualReviewAboveUsd": "7500"
+    }
+  ],
+  "alerts": {
+    "webhookUrl": "https://alerts.example.com/securd-liquidations",
+    "emailRecipients": [
+      "ops@example.com",
+      "risk@example.com"
+    ]
+  },
+  "execution": {
+    "gasPriceStrategy": "bounded-escalation",
+    "gasLimitBufferBps": 1200,
+    "retryOnReplacementUnderpriced": true,
+    "retryOnNonceTooLow": false
+  }
+}
