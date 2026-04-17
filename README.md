@@ -2,6 +2,8 @@
 
 Securd is an XRPL-native lending protocol architecture where users initiate actions from XRPL Ledger while lending state, risk checks, collateral accounting, and market execution live on XRPL EVM.
 
+Securd is designed so XRPL Ledger liquidity providers can use their XRPL AMM LP tokens as collateral through a dedicated fallback-oracle path on XRPL EVM.
+
 The protocol keeps the lending core on XRPL EVM and adds an Axelar-based cross-chain execution layer around it.
 
 ## Core idea
@@ -13,6 +15,7 @@ The protocol keeps the lending core on XRPL EVM and adds an Axelar-based cross-c
 - `BORROW` and `WITHDRAW` complete with token egress back to XRPL Ledger through Axelar Interchain Token Service.
 - User positions stay on XRPL EVM inside deterministic per-user proxy accounts.
 - XRPL Ledger LP tokens can be accepted as collateral through the fallback oracle path managed by an authorized oracle bot.
+- This allows XRPL AMM liquidity providers to unlock borrowing power from their XRPL Ledger LP positions without moving the lending core off XRPL EVM.
 
 ## Repository layout
 
