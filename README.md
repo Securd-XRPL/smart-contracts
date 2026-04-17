@@ -43,6 +43,8 @@ The protocol keeps the lending core on XRPL EVM and adds an Axelar-based cross-c
 
 ## Documentation
 
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
 - [docs/README.md](docs/README.md)
 - [docs/01-system-architecture.md](docs/01-system-architecture.md)
 - [docs/02-contract-reference.md](docs/02-contract-reference.md)
