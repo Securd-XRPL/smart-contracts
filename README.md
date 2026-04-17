@@ -61,6 +61,7 @@ The protocol keeps the lending core on XRPL EVM and adds an Axelar-based cross-c
 - [docs/13-deployment-runbook.md](docs/13-deployment-runbook.md)
 - [docs/14-release-promotion-checklist.md](docs/14-release-promotion-checklist.md)
 - [docs/15-xrpl-lp-oracle-bot.md](docs/15-xrpl-lp-oracle-bot.md)
+- [docs/16-github-actions-setup.md](docs/16-github-actions-setup.md)
   Real-time XRPL AMM LP-token valuation, fallback oracle publication, and decentralization roadmap for LP pricing.
 
 Relevant tooling:

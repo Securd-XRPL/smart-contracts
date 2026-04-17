@@ -49,6 +49,9 @@ Promotion checklist from testnet validation to mainnet release.
 15. [15-xrpl-lp-oracle-bot.md](15-xrpl-lp-oracle-bot.md)
 How to value XRPL AMM LP tokens in real time, publish prices safely to the fallback oracle, and decentralize LP reporting over time.
 
+16. [16-github-actions-setup.md](16-github-actions-setup.md)
+Exact GitHub Environments, secrets, vars, and workflow setup for CI/CD operations.
+
 ## Test commands
 
 Use the following commands from the repository root:
