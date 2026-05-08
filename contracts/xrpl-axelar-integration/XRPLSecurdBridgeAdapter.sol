@@ -12,6 +12,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CErc20Interface} from "../core/CTokenInterfaces.sol";
 import {XRPLSecurdTypes} from "./libraries/XRPLSecurdTypes.sol";
 
+interface ICTokenComptroller {
+    function comptroller() external view returns (address);
+}
+
 /// @notice Securd V2 cross-chain adapter for XRPL Ledger <-> XRPL EVM through Axelar.
 /// @dev Keeps Securd core unchanged by executing only public cToken methods through per-user proxies.
 contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
@@ -40,8 +44,10 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
     error AmountMismatch(uint256 expected, uint256 provided);
     error SecurdCallFailed(uint8 actionType, uint256 errorCode);
     error TransferFailed();
+    error ProxyCallFailed(address target);
     error ProxyTokenCallFailed();
     error IntentSignerNotConfigured(bytes32 xrplAccount);
+    error InvalidIntentSigner();
     error InvalidIntentSignature(bytes32 xrplAccount, address expected, address recovered);
 
     event TrustedGmpSourceSet(bytes32 indexed sourceId, string sourceChain, string sourceAddress, bool trusted);
@@ -50,6 +56,8 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
     event DestinationChainSet(string previous, string current);
     event EgressGasValueSet(uint256 previous, uint256 current);
     event IntentSignerSet(bytes32 indexed xrplAccount, address indexed previousSigner, address indexed newSigner);
+    event NonceReset(bytes32 indexed xrplAccount, uint64 previousNonce, uint64 newNonce);
+    event TokenRescued(address indexed token, address indexed to, uint256 amount);
     event IntentDuplicateIgnored(bytes32 indexed intentId, bytes32 payloadHash);
     event IntentExecuted(
         bytes32 indexed intentId,
@@ -177,9 +185,29 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
     /// @dev This adds per-user cryptographic authorization on top of Axelar source validation.
     function setIntentSigner(bytes32 xrplAccount, address signer) external onlyOwner {
         if (xrplAccount == bytes32(0)) revert InvalidXrplAccount();
+        if (signer == address(0)) revert InvalidIntentSigner();
         address previousSigner = intentSignerOfXrplAccount[xrplAccount];
         intentSignerOfXrplAccount[xrplAccount] = signer;
         emit IntentSignerSet(xrplAccount, previousSigner, signer);
+    }
+
+    /// @notice Emergency nonce override for an XRPL account.
+    /// @dev Only use when an intentId conflict has permanently deadlocked a user's nonce sequence.
+    ///      Emits NonceReset so the advance is auditable on-chain.
+    function resetNonce(bytes32 xrplAccount, uint64 newNonce) external onlyOwner {
+        if (xrplAccount == bytes32(0)) revert InvalidXrplAccount();
+        uint64 prev = nextNonceByXrplAccount[xrplAccount];
+        nextNonceByXrplAccount[xrplAccount] = newNonce;
+        emit NonceReset(xrplAccount, prev, newNonce);
+    }
+
+    /// @notice Recovers ERC20 tokens that became stuck in the adapter.
+    /// @dev Needed for C-1: when an ITS duplicate arrives, tokens are already in the adapter
+    ///      before executeWithInterchainToken runs; the duplicate-ignore path leaves them here.
+    function rescueERC20(address token, address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert TransferFailed();
+        _safeTransfer(token, to, amount);
+        emit TokenRescued(token, to, amount);
     }
 
     /// @notice Withdraws native gas funds accumulated in the adapter.
@@ -404,8 +432,26 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, uint256(0)));
         _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, amount));
 
-        bytes memory out = _proxyCall(proxy, market, abi.encodeWithSelector(CErc20Interface.mint.selector, amount));
-        _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.SUPPLY), out);
+        // Use raw (non-reverting) proxy call so we can always reset the allowance — even if mint reverts.
+        // A revert without the reset would leave an open approval on the proxy for a potentially untrusted market.
+        (bool mintOk, bytes memory mintOut) = _proxyCallRaw(proxy, market, abi.encodeWithSelector(CErc20Interface.mint.selector, amount));
+
+        // Reset allowance unconditionally — guards against stale approval on both success and failure paths.
+        _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, uint256(0)));
+
+        if (!mintOk) {
+            if (mintOut.length == 0) revert ProxyCallFailed(market);
+            assembly { revert(add(mintOut, 0x20), mload(mintOut)) }
+        }
+        _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.SUPPLY), mintOut);
+
+        // Enter the supplied market so the cToken balance counts as collateral in liquidity checks.
+        // Without this call, cross-asset borrowing always fails with INSUFFICIENT_LIQUIDITY because
+        // Compound's getHypotheticalAccountLiquidityInternal only iterates accountAssets[proxy].
+        address comptrollerAddr = ICTokenComptroller(market).comptroller();
+        address[] memory marketsToEnter = new address[](1);
+        marketsToEnter[0] = market;
+        _proxyCall(proxy, comptrollerAddr, abi.encodeWithSignature("enterMarkets(address[])", marketsToEnter));
     }
 
     function _repay(address proxy, address market, address underlying, uint256 amount) internal {
@@ -465,11 +511,26 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             abi.encodeWithSignature("execute(address,uint256,bytes)", target, uint256(0), data)
         );
         if (!ok) {
+            if (out.length == 0) revert ProxyCallFailed(target);
             assembly {
                 revert(add(out, 0x20), mload(out))
             }
         }
         return abi.decode(out, (bytes));
+    }
+
+    /// @dev Like _proxyCall but never reverts — returns (ok, innerReturnData) for callers that need
+    ///      to perform cleanup (e.g. allowance reset) regardless of whether the inner call succeeded.
+    function _proxyCallRaw(address proxy, address target, bytes memory data) internal returns (bool ok, bytes memory innerOut) {
+        bytes memory out;
+        (ok, out) = proxy.call(
+            abi.encodeWithSignature("execute(address,uint256,bytes)", target, uint256(0), data)
+        );
+        if (ok) {
+            innerOut = abi.decode(out, (bytes));
+        } else {
+            innerOut = out;
+        }
     }
 
     function _proxyTokenCall(address proxy, address token, bytes memory data) internal {

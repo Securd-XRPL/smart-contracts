@@ -30,6 +30,7 @@ contract SecurdMedianOracleReporter is Ownable, Pausable {
     error InvalidSubmission();
     error RoundAlreadyFinalized();
     error RoundStillOpen();
+    error RoundExpired();
     error ReporterNotAuthorized(address asset, address reporter);
     error DuplicateSubmission(address asset, uint256 roundId, address reporter);
     error InsufficientSubmissions(address asset, uint256 roundId, uint256 have, uint256 need);
@@ -102,7 +103,7 @@ contract SecurdMedianOracleReporter is Ownable, Pausable {
         if (round.deadline == 0) {
             round.deadline = uint64(block.timestamp + cfg.roundDuration);
         } else if (block.timestamp > round.deadline) {
-            revert RoundStillOpen();
+            revert RoundExpired();
         }
 
         if (submittedPriceOf[asset][roundId][msg.sender] != 0) {
@@ -157,6 +158,9 @@ contract SecurdMedianOracleReporter is Ownable, Pausable {
         if (length % 2 == 1) {
             return values[mid];
         }
-        return (values[mid - 1] + values[mid]) / 2;
+        // Overflow-safe average: values are sorted ascending so values[mid] >= values[mid-1].
+        uint256 lo = values[mid - 1];
+        uint256 hi = values[mid];
+        return lo + (hi - lo) / 2;
     }
 }

@@ -20,6 +20,10 @@ function assertEqual(actual: string, expected: string, label: string) {
   }
 }
 
+function isZeroAddress(value: string): boolean {
+  return value.toLowerCase() === ethers.ZeroAddress.toLowerCase();
+}
+
 async function main() {
   const deploymentRecordPath = requiredEnv("DEPLOYMENT_RECORD_FILE");
   const deployment = loadDeploymentSummary(deploymentRecordPath);
@@ -37,7 +41,19 @@ async function main() {
   assertEqual(await proxyFactory.owner(), deployment.owner, "proxyFactory.owner");
   assertEqual(await bridgeAdapter.owner(), deployment.owner, "bridgeAdapter.owner");
   assertEqual(await proxyFactory.controller(), deployment.xrplBridgeAdapter, "proxyFactory.controller");
-  assertEqual(await unitroller.pendingAdmin(), deployment.comptrollerPendingAdmin, "unitroller.pendingAdmin");
+  const unitrollerAdmin = await unitroller.admin();
+  const unitrollerPendingAdmin = await unitroller.pendingAdmin();
+  const handoffAccepted =
+    unitrollerAdmin.toLowerCase() === deployment.comptrollerExpectedAdmin.toLowerCase() && isZeroAddress(unitrollerPendingAdmin);
+  const handoffPending =
+    unitrollerAdmin.toLowerCase() === deployment.comptrollerAdmin.toLowerCase() &&
+    unitrollerPendingAdmin.toLowerCase() === deployment.comptrollerPendingAdmin.toLowerCase();
+
+  if (!handoffAccepted && !handoffPending) {
+    throw new Error(
+      `unitroller admin state mismatch: expected either admin=${deployment.comptrollerAdmin}, pending=${deployment.comptrollerPendingAdmin} or admin=${deployment.comptrollerExpectedAdmin}, pending=${ethers.ZeroAddress}; got admin=${unitrollerAdmin}, pending=${unitrollerPendingAdmin}`
+    );
+  }
   assertEqual(await comptroller.oracle(), deployment.oracle, "comptroller.oracle");
 
   if (expectedDestinationChain) {
@@ -53,7 +69,7 @@ async function main() {
   console.log(`- proxy factory owner`);
   console.log(`- bridge adapter owner`);
   console.log(`- proxy factory controller`);
-  console.log(`- unitroller pending admin`);
+  console.log(`- unitroller admin state`);
   console.log(`- comptroller oracle`);
   if (expectedDestinationChain) {
     console.log(`- bridge destination chain`);

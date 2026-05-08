@@ -4,58 +4,46 @@ pragma solidity 0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {CTokenInterface} from "../core/CTokenInterfaces.sol";
 
-contract MockCErc20Market {
+/// @dev Like MockCErc20Market but mint() can be set to revert, used to test that
+///      XRPLSecurdBridgeAdapter._supply resets the token approval even on mint failure.
+contract MockCErc20MarketRevertingMint {
     IERC20 public immutable underlying;
-    uint256 public nextMintResult;
-    uint256 public nextRepayResult;
-    uint256 public nextBorrowResult;
-    uint256 public nextRedeemResult;
-    uint256 public nextLiquidationResult;
+    bool public mintReverts;
 
     constructor(address underlying_) {
         underlying = IERC20(underlying_);
     }
 
-    function setResults(
-        uint256 mintResult,
-        uint256 repayResult,
-        uint256 borrowResult,
-        uint256 redeemResult,
-        uint256 liquidationResult
-    ) external {
-        nextMintResult = mintResult;
-        nextRepayResult = repayResult;
-        nextBorrowResult = borrowResult;
-        nextRedeemResult = redeemResult;
-        nextLiquidationResult = liquidationResult;
+    function setMintReverts(bool reverts_) external {
+        mintReverts = reverts_;
     }
 
     function mint(uint256 mintAmount) external returns (uint256) {
+        if (mintReverts) revert("mint: forced revert");
         underlying.transferFrom(msg.sender, address(this), mintAmount);
-        return nextMintResult;
+        return 0;
     }
 
     function repayBorrow(uint256 repayAmount) external returns (uint256) {
         underlying.transferFrom(msg.sender, address(this), repayAmount);
-        return nextRepayResult;
+        return 0;
     }
 
     function borrow(uint256 borrowAmount) external returns (uint256) {
         underlying.transfer(msg.sender, borrowAmount);
-        return nextBorrowResult;
+        return 0;
     }
 
     function redeemUnderlying(uint256 redeemAmount) external returns (uint256) {
         underlying.transfer(msg.sender, redeemAmount);
-        return nextRedeemResult;
+        return 0;
     }
 
     function liquidateBorrow(address, uint256 repayAmount, CTokenInterface) external returns (uint256) {
         underlying.transferFrom(msg.sender, address(this), repayAmount);
-        return nextLiquidationResult;
+        return 0;
     }
 
-    // Acts as its own mock comptroller so the adapter can call comptroller().enterMarkets() in tests.
     function comptroller() external view returns (address) {
         return address(this);
     }

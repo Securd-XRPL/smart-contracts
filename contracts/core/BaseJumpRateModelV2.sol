@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.10;
+pragma solidity 0.8.24;
 
 import "./InterestRateModel.sol";
 
@@ -19,9 +19,13 @@ abstract contract BaseJumpRateModelV2 is InterestRateModel {
     address public owner;
 
     /**
-     * @notice The approximate number of blocks per year that is assumed by the interest rate model
+     * @notice The approximate number of blocks per year calibrated for XRPL EVM (~3.5 s/block).
+     * @dev Ethereum Mainnet used 2,102,400 (15 s/block). XRPL EVM BFT consensus produces
+     *      ~3.5 s blocks → 31,557,600 s/yr ÷ 3.5 s/block ≈ 9,016,457. Rounded to 9,014,400
+     *      for a clean multiple; verify against observed on-chain block times after deployment
+     *      and adjust via updateJumpRateModel if needed.
      */
-    uint public constant blocksPerYear = 2102400;
+    uint public constant blocksPerYear = 9_014_400;
 
     /**
      * @notice The multiplier of utilization rate that gives the slope of the interest rate
@@ -128,6 +132,7 @@ abstract contract BaseJumpRateModelV2 is InterestRateModel {
      * @param kink_ The utilization point at which the jump multiplier is applied
      */
     function updateJumpRateModelInternal(uint baseRatePerYear, uint multiplierPerYear, uint jumpMultiplierPerYear, uint kink_) internal {
+        require(kink_ > 0, "kink=0");
         baseRatePerBlock = baseRatePerYear / blocksPerYear;
         multiplierPerBlock = (multiplierPerYear * BASE) / (blocksPerYear * kink_);
         jumpMultiplierPerBlock = jumpMultiplierPerYear / blocksPerYear;

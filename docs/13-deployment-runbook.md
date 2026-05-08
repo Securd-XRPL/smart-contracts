@@ -74,6 +74,10 @@ source .env.deploy
 npx hardhat run scripts/verifyDeployedSecurdStack.ts --network xrplEvm
 ```
 
+The verification and smoke-check scripts accept either of these valid Unitroller states:
+- admin handoff still pending after deployment
+- admin handoff already accepted by the final admin wallet
+
 This verifies:
 
 - contract ownerships
@@ -83,6 +87,32 @@ This verifies:
 - bridge destination chain when provided
 - listed markets and collateral factors when market config is provided
 - trusted GMP and ITS sources when source config files are provided
+
+## XRPL EVM testnet Axelar addresses
+
+For XRPL EVM testnet, configure the adapter with the live Axelar relayer stack in
+[axelar-xrpl-evm-testnet.example.json](../config/axelar-xrpl-evm-testnet.example.json).
+
+The most important values for XRPL-originated transfers are:
+
+```bash
+INTERCHAIN_TOKEN_SERVICE=0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C
+AXELAR_GATEWAY=0xe432150cce91c13a887f7D836923d5597adD8E31
+```
+
+`XRPLSecurdBridgeAdapter` stores the ITS address immutably. If
+`executeWithInterchainToken` is reverting with `NotInterchainTokenService`, the adapter
+was deployed with an ITS address that differs from the live relayer sender. Update the
+deployment environment and redeploy the adapter or full stack; changing trusted ITS
+sources will not change the required `msg.sender`.
+
+For raw Axelar callback tests, the current Axelar testnet wXRP token id is
+`0xba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f` and its XRPL EVM
+representation is `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE`.
+
+Do not assume that sentinel can be dropped directly into an ERC20 lending market. The current
+adapter executes ERC20 `transfer` and `approve` calls for `SUPPLY` and `REPAY`, so lending
+execution still needs an ERC20-compatible underlying or explicit native-token handling.
 
 ## Step 6: Deploy and seed the liquidation keeper
 

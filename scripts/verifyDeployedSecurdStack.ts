@@ -29,6 +29,10 @@ function assertEqual(actual: string | bigint | boolean, expected: string | bigin
   }
 }
 
+function isZeroAddress(value: string): boolean {
+  return value.toLowerCase() === ethers.ZeroAddress.toLowerCase();
+}
+
 async function main() {
   const deploymentRecordPath = requiredEnv("DEPLOYMENT_RECORD_FILE");
   const deployment = loadDeploymentSummary(deploymentRecordPath);
@@ -60,8 +64,22 @@ async function main() {
   assertEqual((await proxyFactory.controller()).toLowerCase(), deployment.xrplBridgeAdapter.toLowerCase(), "proxyFactory.controller");
   checks.push("proxy factory controller");
 
-  assertEqual((await unitroller.pendingAdmin()).toLowerCase(), deployment.comptrollerPendingAdmin.toLowerCase(), "unitroller.pendingAdmin");
-  checks.push("unitroller pending admin");
+  const unitrollerAdmin = (await unitroller.admin()).toLowerCase();
+  const unitrollerPendingAdmin = (await unitroller.pendingAdmin()).toLowerCase();
+  const recordedAdmin = deployment.comptrollerAdmin.toLowerCase();
+  const recordedPendingAdmin = deployment.comptrollerPendingAdmin.toLowerCase();
+  const expectedAdmin = deployment.comptrollerExpectedAdmin.toLowerCase();
+
+  const handoffAccepted = unitrollerAdmin === expectedAdmin && isZeroAddress(unitrollerPendingAdmin);
+  const handoffPending = unitrollerAdmin === recordedAdmin && unitrollerPendingAdmin === recordedPendingAdmin;
+
+  if (!handoffAccepted && !handoffPending) {
+    throw new Error(
+      `unitroller admin state mismatch: expected either admin=${deployment.comptrollerAdmin}, pending=${deployment.comptrollerPendingAdmin} or admin=${deployment.comptrollerExpectedAdmin}, pending=${ethers.ZeroAddress}; got admin=${await unitroller.admin()}, pending=${await unitroller.pendingAdmin()}`
+    );
+  }
+
+  checks.push(handoffAccepted ? "unitroller admin accepted" : "unitroller admin pending");
 
   assertEqual((await comptroller.oracle()).toLowerCase(), deployment.oracle.toLowerCase(), "comptroller.oracle");
   checks.push("comptroller oracle");

@@ -28,8 +28,13 @@
     "validate:deployment-record": "ts-node scripts/validateDeploymentRecord.ts deployments/xrpl-evm-mainnet.example.json",
     "verify:deployment": "hardhat run scripts/verifyDeployedSecurdStack.ts --network xrplEvm",
     "smoke:deployment": "hardhat run scripts/smokeCheckDeployment.ts --network xrplEvm",
+    "xrpl:deposit": "ts-node scripts/submitXrplDeposit.ts",
     "sign:deployment-manifest": "ts-node scripts/signDeploymentManifest.ts",
-    "verify:deployment-manifest": "ts-node scripts/verifyDeploymentManifest.ts"
+    "verify:deployment-manifest": "ts-node scripts/verifyDeploymentManifest.ts",
+    "demo:deploy-receiver": "hardhat run scripts/deployXrplEvmDemoReceiver.ts --network xrplEvm",
+    "demo:send-gmp": "ts-node scripts/sendXrplGmpMessage.ts",
+    "demo:send-its": "ts-node scripts/sendXrplItsWithGmp.ts",
+    "demo:check-receiver": "ts-node scripts/checkXrplEvmDemoReceiver.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
@@ -48,6 +53,7 @@
   "dependencies": {
     "@axelar-network/axelar-gmp-sdk-solidity": "^6.0.6",
     "@axelar-network/interchain-token-service": "^2.2.0",
-    "@openzeppelin/contracts": "^4.9.6"
+    "@openzeppelin/contracts": "^4.9.6",
+    "xrpl": "^4.6.0"
   }
 }

@@ -1,0 +1,19 @@
+{
+  "network": "xrpl-evm-testnet",
+  "chainId": 1440002,
+  "source": "Axelar team live testnet relayer configuration",
+  "warning": "Use these live relayer addresses for testnet adapter deployment. Some XRPL EVM docs pages may show stale or separate Axelar deployments.",
+  "contracts": {
+    "interchainTokenService": "0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C",
+    "interchainTokenFactory": "0x83a93500d23Fbc3e82B410aD07A6a9F7A0670D66",
+    "axelarGateway": "0xe432150cce91c13a887f7D836923d5597adD8E31",
+    "axelarGasService": "0xbE406F0189A0B4cf3A05C286473D23791Dd44Cc6"
+  },
+  "assets": {
+    "wXRP": {
+      "tokenId": "0xba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f",
+      "xrplEvmRepresentation": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+      "note": "This native-token sentinel is useful for raw callback tests. The current lending adapter still expects ERC20-compatible transfer and approve behavior."
+    }
+  }
+}

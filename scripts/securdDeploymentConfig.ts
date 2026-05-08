@@ -52,10 +52,13 @@ export interface DeploymentSummaryMarket {
 export interface DeploymentSummary {
   owner: string;
   deployer: string;
+  comptrollerAdmin: string;
   comptrollerPendingAdmin: string;
+  comptrollerExpectedAdmin: string;
   unitroller: string;
   comptrollerImplementation: string;
   comptrollerProxy: string;
+  collateralFactorTimelock?: string;
   oracle: string;
   interestRateModel: string;
   cErc20DelegateImplementation: string;
@@ -176,7 +179,9 @@ export function parseDeploymentSummary(input: unknown): DeploymentSummary {
   assert(isObject(input), "deployment summary root must be an object");
   assertAddress(input.owner, "owner");
   assertAddress(input.deployer, "deployer");
+  assertAddress(input.comptrollerAdmin, "comptrollerAdmin");
   assertAddress(input.comptrollerPendingAdmin, "comptrollerPendingAdmin");
+  assertAddress(input.comptrollerExpectedAdmin, "comptrollerExpectedAdmin");
   assertAddress(input.unitroller, "unitroller");
   assertAddress(input.comptrollerImplementation, "comptrollerImplementation");
   assertAddress(input.comptrollerProxy, "comptrollerProxy");

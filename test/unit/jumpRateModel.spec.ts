@@ -5,7 +5,7 @@ import { ethers } from "hardhat";
 describe("JumpRateModelV2", function () {
   it("calculates utilization, borrow rate, and supply rate across the kink", async function () {
     const [owner] = await ethers.getSigners();
-    const blocksPerYear = 2_102_400n;
+    const blocksPerYear = 9_014_400n; // calibrated for XRPL EVM ~3.5 s/block
     const kink = ethers.parseEther("0.8");
     const baseRatePerYear = ethers.parseEther("0.02");
     const multiplierPerYear = ethers.parseEther("0.1");

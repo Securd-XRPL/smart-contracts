@@ -72,7 +72,8 @@ function resolveBridgeTokenId(config: MarketConfig): string {
 function toOracleType(mode: OracleMode): number {
   if (mode === "CHAINLINK") return 1;
   if (mode === "BAND") return 2;
-  return 3;
+  if (mode === "FALLBACK") return 3;
+  throw new Error(`Unknown oracle mode: "${mode}". Expected CHAINLINK, BAND, or FALLBACK.`);
 }
 
 async function maybeTransferOwnership(contract: { owner(): Promise<string>; transferOwnership(nextOwner: string): Promise<{ wait(): Promise<unknown> }> }, nextOwner: string) {
@@ -104,7 +105,8 @@ async function main() {
   const pauseGuardian = process.env.SECURD_PAUSE_GUARDIAN?.trim();
   const borrowCapGuardian = process.env.SECURD_BORROW_CAP_GUARDIAN?.trim();
   const deploymentOutputFile = process.env.DEPLOYMENT_OUTPUT_FILE?.trim();
-  const comptrollerPendingAdmin = (process.env.SECURD_PENDING_ADMIN?.trim() || owner);
+  const comptrollerExpectedAdmin = process.env.SECURD_PENDING_ADMIN?.trim() || owner;
+  const deployCollateralFactorTimelock = process.env.SECURD_DEPLOY_COLLATERAL_FACTOR_TIMELOCK !== "false";
   const deployMedianOracleReporter = process.env.SECURD_DEPLOY_MEDIAN_ORACLE_REPORTER === "true";
   const medianReporterOwner = process.env.SECURD_MEDIAN_REPORTER_OWNER?.trim() || owner;
   const medianReporterConfigRaw = process.env.SECURD_MEDIAN_REPORTER_CONFIG?.trim();
@@ -154,6 +156,24 @@ async function main() {
 
   if (borrowCapGuardian) {
     await (await comptroller._setBorrowCapGuardian(borrowCapGuardian)).wait();
+  }
+
+  // Deploy the collateral-factor timelock unless explicitly disabled.
+  // The timelock enforces a 48-hour delay on _setCollateralFactor changes so that borrowers
+  // cannot be made immediately liquidatable by a retroactive collateral factor reduction.
+  let collateralFactorTimelock:
+    | ({
+        waitForDeployment(): Promise<unknown>;
+        getAddress(): Promise<string>;
+        acceptUnitrollerAdmin(unitroller: string): Promise<{ wait(): Promise<unknown> }>;
+        owner(): Promise<string>;
+        transferOwnership(nextOwner: string): Promise<{ wait(): Promise<unknown> }>;
+      })
+    | undefined;
+  if (deployCollateralFactorTimelock) {
+    const TimelockFactory = await ethers.getContractFactory("SecurdCollateralFactorTimelock");
+    collateralFactorTimelock = await TimelockFactory.deploy(deployer.address);
+    await collateralFactorTimelock.waitForDeployment();
   }
 
   const Delegate = await ethers.getContractFactory("CErc20Delegate");
@@ -310,9 +330,20 @@ async function main() {
     await (await comptroller._setMarketBorrowCaps(borrowCapTargets, borrowCaps)).wait();
   }
 
-  if (comptrollerPendingAdmin.toLowerCase() !== deployer.address.toLowerCase()) {
-    await (await unitroller._setPendingAdmin(comptrollerPendingAdmin)).wait();
+  // Wire the collateral-factor timelock as Unitroller admin so that all _setCollateralFactor
+  // calls go through the 48-hour delay enforced by SecurdCollateralFactorTimelock.
+  // The timelock itself is then owned by `owner` (the multisig).
+  if (collateralFactorTimelock) {
+    const timelockAddr = await collateralFactorTimelock.getAddress();
+    await (await unitroller._setPendingAdmin(timelockAddr)).wait();
+    await (await collateralFactorTimelock.acceptUnitrollerAdmin(await unitroller.getAddress())).wait();
+    await maybeTransferOwnership(collateralFactorTimelock, owner);
+  } else if (comptrollerExpectedAdmin.toLowerCase() !== deployer.address.toLowerCase()) {
+    await (await unitroller._setPendingAdmin(comptrollerExpectedAdmin)).wait();
   }
+
+  const comptrollerAdmin = await unitroller.admin();
+  const comptrollerPendingAdmin = await unitroller.pendingAdmin();
 
   await maybeTransferOwnership(oracle, owner);
   await maybeTransferOwnership(liquidationKeeper, owner);
@@ -325,10 +356,13 @@ async function main() {
   const summary: DeploymentSummary = {
     owner,
     deployer: deployer.address,
+    comptrollerAdmin,
     comptrollerPendingAdmin,
+    comptrollerExpectedAdmin,
     unitroller: await unitroller.getAddress(),
     comptrollerImplementation: await comptrollerImplementation.getAddress(),
     comptrollerProxy: await unitroller.getAddress(),
+    collateralFactorTimelock: collateralFactorTimelock ? await collateralFactorTimelock.getAddress() : undefined,
     oracle: await oracle.getAddress(),
     interestRateModel: await interestRateModel.getAddress(),
     cErc20DelegateImplementation: await cErc20DelegateImplementation.getAddress(),
@@ -340,7 +374,9 @@ async function main() {
   };
 
   console.log(JSON.stringify(summary, null, 2));
-  console.log("Note: if comptrollerPendingAdmin differs from the deployer, the pending admin must call _acceptAdmin() on Unitroller.");
+  if (comptrollerPendingAdmin !== ethers.ZeroAddress) {
+    console.log("Note: Unitroller admin handoff is pending; the pending admin must call _acceptAdmin() on Unitroller.");
+  }
 
   if (deploymentOutputFile) {
     const resolved = path.resolve(deploymentOutputFile);

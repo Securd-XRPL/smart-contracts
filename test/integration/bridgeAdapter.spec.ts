@@ -3,6 +3,9 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { ActionType, randomIntentId, signIntent } from "../helpers";
 
+const LIVE_XRPL_EVM_TESTNET_ITS = "0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C";
+const STALE_XRPL_EVM_TESTNET_ITS = "0x000000000000000000000000000000000000dEaD";
+
 function encodeSignedIntent(signedIntent: { envelope: any; signature: string }) {
   const e = signedIntent.envelope;
   return ethers.AbiCoder.defaultAbiCoder().encode(
@@ -104,6 +107,71 @@ describe("XRPLSecurdBridgeAdapter integration", function () {
 
     const proxyAddress = await factory.proxyOf(xrplAccount);
     expect(proxyAddress).to.not.equal(ethers.ZeroAddress);
+  });
+
+  it("requires the live XRPL EVM testnet ITS sender for token ingress", async function () {
+    const [owner, signer] = await ethers.getSigners();
+    const gateway = await (await ethers.getContractFactory("MockGateway")).deploy();
+    const token = await (await ethers.getContractFactory("MockERC20")).deploy("Wrapped XRP", "wXRP", 18);
+    const market = await (await ethers.getContractFactory("MockCErc20Market")).deploy(token.target);
+    const factory = await (await ethers.getContractFactory("XRPLUserProxyFactory")).deploy(owner.address, owner.address);
+    const adapter = await (
+      await ethers.getContractFactory("XRPLSecurdBridgeAdapter")
+    ).deploy(owner.address, gateway.target, LIVE_XRPL_EVM_TESTNET_ITS, factory.target, "xrpl");
+
+    await factory.connect(owner).setController(adapter.target);
+    await adapter.setTrustedItsSource("xrpl", ethers.toUtf8Bytes("source-app"), true);
+
+    const tokenId = "0xba5a21ca88ef6bba2bfff5088994f90e1077e2a1cc3dcc38bd261f00fce2824f";
+    await adapter.setMarket(market.target, token.target, tokenId, true);
+
+    const xrplAccount = ethers.encodeBytes32String("alice");
+    await adapter.setIntentSigner(xrplAccount, signer.address);
+    await token.mint(adapter.target, 1_000_000n);
+
+    const envelope = {
+      intentId: randomIntentId("live-testnet-its-supply"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.SUPPLY,
+      amount: 50_000n,
+      nonce: 0,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+    const payload = encodeSignedIntent(await signIntent(adapter.target as string, signer, envelope));
+
+    await ethers.provider.send("hardhat_setBalance", [STALE_XRPL_EVM_TESTNET_ITS, "0x1000000000000000000"]);
+    await expect(
+      adapter
+        .connect(await ethers.getImpersonatedSigner(STALE_XRPL_EVM_TESTNET_ITS))
+        .executeWithInterchainToken(
+          ethers.ZeroHash,
+          "xrpl",
+          ethers.toUtf8Bytes("source-app"),
+          payload,
+          tokenId,
+          token.target,
+          envelope.amount
+        )
+    ).to.be.revertedWithCustomError(adapter, "NotInterchainTokenService");
+
+    await ethers.provider.send("hardhat_setBalance", [LIVE_XRPL_EVM_TESTNET_ITS, "0x1000000000000000000"]);
+    await expect(
+      adapter
+        .connect(await ethers.getImpersonatedSigner(LIVE_XRPL_EVM_TESTNET_ITS))
+        .executeWithInterchainToken(
+          ethers.ZeroHash,
+          "xrpl",
+          ethers.toUtf8Bytes("source-app"),
+          payload,
+          tokenId,
+          token.target,
+          envelope.amount
+        )
+    ).to.emit(adapter, "IntentExecuted");
   });
 
   it("processes borrow through GMP and initiates egress", async function () {
@@ -405,5 +473,77 @@ describe("XRPLSecurdBridgeAdapter integration", function () {
           supplyIntent.amount
         )
     ).to.be.revertedWithCustomError(adapter, "ProxyTokenCallFailed");
+  });
+
+  it("resets proxy token approval even when mint reverts (NEW-B)", async function () {
+    const { owner, signer, its, token, adapter, tokenId, xrplAccount } = await deployFixture();
+
+    // Deploy a market whose mint() can be toggled to revert
+    const revertingMarket = await (
+      await ethers.getContractFactory("MockCErc20MarketRevertingMint")
+    ).deploy(token.target);
+    await adapter.connect(owner).setMarket(revertingMarket.target, token.target, tokenId, true);
+
+    const freshAccount = ethers.encodeBytes32String("dave");
+    await adapter.connect(owner).setIntentSigner(freshAccount, signer.address);
+
+    const supplyIntent = {
+      intentId: randomIntentId("supply-revert-mint"),
+      xrplAccount: freshAccount,
+      market: revertingMarket.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.SUPPLY,
+      amount: 3_000n,
+      nonce: 0,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+
+    // Fund the adapter so it can forward tokens to the proxy
+    await token.mint(adapter.target, 10_000n);
+    await token.mint(revertingMarket.target, 10_000n);
+
+    // First supply with mint succeeding — establishes the proxy address
+    await ethers.provider.send("hardhat_setBalance", [its.target, "0x1000000000000000000"]);
+    await adapter
+      .connect(await ethers.getImpersonatedSigner(its.target as string))
+      .executeWithInterchainToken(
+        ethers.ZeroHash,
+        "xrpl-ledger",
+        ethers.toUtf8Bytes("source-app"),
+        encodeSignedIntent(await signIntent(adapter.target as string, signer, supplyIntent)),
+        tokenId,
+        token.target,
+        supplyIntent.amount
+      );
+
+    // Now make mint revert and attempt a second supply
+    await revertingMarket.setMintReverts(true);
+
+    const supplyIntent2 = { ...supplyIntent, intentId: randomIntentId("supply-revert-mint-2"), nonce: 1 };
+    await token.mint(adapter.target, 10_000n);
+    await expect(
+      adapter
+        .connect(await ethers.getImpersonatedSigner(its.target as string))
+        .executeWithInterchainToken(
+          ethers.ZeroHash,
+          "xrpl-ledger",
+          ethers.toUtf8Bytes("source-app"),
+          encodeSignedIntent(await signIntent(adapter.target as string, signer, supplyIntent2)),
+          tokenId,
+          token.target,
+          supplyIntent2.amount
+        )
+    ).to.be.reverted;
+
+    // Verify: the proxy's allowance for the market has been reset to 0 even though mint reverted
+    const { XRPLUserProxy } = await import("../../typechain-types");
+    const proxyAddr = await (
+      await ethers.getContractAt("XRPLUserProxyFactory", await adapter.proxyFactory())
+    ).proxyOf(freshAccount);
+
+    // Allowance should be 0 — not stuck at the pre-mint approval amount
+    expect(await token.allowance(proxyAddr, revertingMarket.target)).to.equal(0);
   });
 });

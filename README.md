@@ -101,6 +101,7 @@ Deployment helpers:
 - Full XRPL EVM stack deploy: [deploySecurdStack.ts](scripts/deploySecurdStack.ts)
 - Keeper wrapper deploy: [deployLiquidationKeeper.ts](scripts/deployLiquidationKeeper.ts)
 - Example market config: [securd-markets.example.json](config/securd-markets.example.json)
+- XRPL EVM testnet Axelar config: [axelar-xrpl-evm-testnet.example.json](config/axelar-xrpl-evm-testnet.example.json)
 - Example trusted GMP sources: [trusted-gmp-sources.example.json](config/trusted-gmp-sources.example.json)
 - Example trusted ITS sources: [trusted-its-sources.example.json](config/trusted-its-sources.example.json)
 
@@ -210,6 +211,7 @@ The example bot config is stored at [liquidation-bot.example.json](config/liquid
 - `npm run validate:deploy-inputs` validates the example market and trusted-source deployment inputs.
 - `npm run validate:deployment-record` validates the recorded deployment JSON shape.
 - `npm run accept:unitroller-admin` finalizes Unitroller admin handoff from the pending admin wallet.
+- `npm run verify:deployment` and `npm run smoke:deployment` accept both the pre-accept and post-accept Unitroller admin states recorded by the deployment summary.
 - `npm run verify:deployment` checks the deployed XRPL EVM contracts against the deployment record and optional config inputs.
 - `npm run smoke:deployment` performs a lightweight live check of ownership and admin pointers.
 - `npm run sign:deployment-manifest` signs a deployment record with an operator key.

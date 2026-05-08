@@ -95,6 +95,91 @@ describe("SecurdPriceOracle", function () {
     expect(await oracle.getUnderlyingPrice(cToken.target)).to.equal(5n * 10n ** 18n);
   });
 
+  it("circuit breaker bypasses fallback staleness during the grace window and expires automatically", async function () {
+    const [owner, bot] = await ethers.getSigners();
+    const band = await (await ethers.getContractFactory("MockBandStdReference")).deploy();
+    const oracle = await (await ethers.getContractFactory("SecurdPriceOracle")).deploy(owner.address, band.target);
+    const asset = ethers.Wallet.createRandom().address;
+    const cToken = await (await ethers.getContractFactory("MockCTokenWithUnderlying")).deploy(asset);
+    const DELAY = 60; // 60-second fallback window
+
+    await oracle.setFallbackConfig(asset, DELAY);
+    await oracle.setAssetOracle(asset, bot.address, true);
+    await oracle.setOracleType(asset, 3);
+    await oracle.connect(bot).postFallbackPrice(asset, 5n * 10n ** 18n);
+
+    // Price is valid
+    expect(await oracle.getUnderlyingPrice(cToken.target)).to.equal(5n * 10n ** 18n);
+
+    // Advance past the fallback max delay — price should expire
+    await ethers.provider.send("evm_increaseTime", [DELAY + 1]);
+    await ethers.provider.send("evm_mine", []);
+    expect(await oracle.getUnderlyingPrice(cToken.target)).to.equal(0);
+
+    // Activate circuit breaker for 1 hour
+    await oracle.activateCircuitBreaker(asset, 3600);
+    expect(await oracle.getUnderlyingPrice(cToken.target)).to.equal(5n * 10n ** 18n);
+
+    // Advance past circuit breaker expiry — price should expire again
+    await ethers.provider.send("evm_increaseTime", [3601]);
+    await ethers.provider.send("evm_mine", []);
+    expect(await oracle.getUnderlyingPrice(cToken.target)).to.equal(0);
+  });
+
+  it("circuit breaker can be deactivated early by the owner", async function () {
+    const [owner, bot] = await ethers.getSigners();
+    const band = await (await ethers.getContractFactory("MockBandStdReference")).deploy();
+    const oracle = await (await ethers.getContractFactory("SecurdPriceOracle")).deploy(owner.address, band.target);
+    const asset = ethers.Wallet.createRandom().address;
+    const cToken = await (await ethers.getContractFactory("MockCTokenWithUnderlying")).deploy(asset);
+
+    await oracle.setFallbackConfig(asset, 30);
+    await oracle.setAssetOracle(asset, bot.address, true);
+    await oracle.setOracleType(asset, 3);
+    await oracle.connect(bot).postFallbackPrice(asset, 7n * 10n ** 18n);
+
+    await ethers.provider.send("evm_increaseTime", [31]);
+    await ethers.provider.send("evm_mine", []);
+
+    await oracle.activateCircuitBreaker(asset, 3600);
+    expect(await oracle.getUnderlyingPrice(cToken.target)).to.equal(7n * 10n ** 18n);
+
+    await expect(oracle.deactivateCircuitBreaker(asset)).to.emit(oracle, "CircuitBreakerDeactivated");
+    expect(await oracle.getUnderlyingPrice(cToken.target)).to.equal(0);
+  });
+
+  it("circuit breaker rejects durations above CIRCUIT_BREAKER_MAX_DURATION", async function () {
+    const [owner] = await ethers.getSigners();
+    const band = await (await ethers.getContractFactory("MockBandStdReference")).deploy();
+    const oracle = await (await ethers.getContractFactory("SecurdPriceOracle")).deploy(owner.address, band.target);
+    const asset = ethers.Wallet.createRandom().address;
+    const MAX = 12 * 3600; // CIRCUIT_BREAKER_MAX_DURATION
+
+    await expect(oracle.activateCircuitBreaker(asset, MAX + 1)).to.be.revertedWithCustomError(
+      oracle,
+      "CircuitBreakerDurationTooLong"
+    );
+
+    // Exactly at max is allowed
+    await oracle.setFallbackConfig(asset, 60);
+    await oracle.setOracleType(asset, 3);
+    await expect(oracle.activateCircuitBreaker(asset, MAX)).to.emit(oracle, "CircuitBreakerActivated");
+  });
+
+  it("circuit breaker is only callable by the owner", async function () {
+    const [owner, outsider] = await ethers.getSigners();
+    const band = await (await ethers.getContractFactory("MockBandStdReference")).deploy();
+    const oracle = await (await ethers.getContractFactory("SecurdPriceOracle")).deploy(owner.address, band.target);
+    const asset = ethers.Wallet.createRandom().address;
+
+    await expect(oracle.connect(outsider).activateCircuitBreaker(asset, 3600)).to.be.revertedWith(
+      "Ownable: caller is not the owner"
+    );
+    await expect(oracle.connect(outsider).deactivateCircuitBreaker(asset)).to.be.revertedWith(
+      "Ownable: caller is not the owner"
+    );
+  });
+
   it("supports configured cToken-underlying overrides and previewing all price sources", async function () {
     const [owner, bot] = await ethers.getSigners();
     const band = await (await ethers.getContractFactory("MockBandStdReference")).deploy();

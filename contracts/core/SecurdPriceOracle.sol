@@ -67,6 +67,7 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
     error MissingChainlinkConfig(address asset);
     error MissingBandConfig(address asset);
     error MissingFallbackConfig(address asset);
+    error CircuitBreakerDurationTooLong(uint256 provided, uint256 max);
 
     event BandReferenceSet(address indexed previous, address indexed current);
     event AssetOracleSet(address indexed asset, address indexed oracle, bool allowed);
@@ -74,6 +75,11 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
     event FallbackPricePosted(address indexed asset, uint256 priceMantissa, uint256 updatedAt, address indexed poster);
     event CTokenUnderlyingSet(address indexed cToken, address indexed oldUnderlying, address indexed newUnderlying);
     event AssetConfigSet(address indexed asset);
+    event CircuitBreakerActivated(address indexed asset, uint256 expiresAt);
+    event CircuitBreakerDeactivated(address indexed asset);
+
+    /// @notice Maximum duration an oracle circuit breaker can be activated for (12 hours).
+    uint256 public constant CIRCUIT_BREAKER_MAX_DURATION = 12 hours;
 
     address public bandStdReference;
 
@@ -81,6 +87,10 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
     mapping(address => address) public cTokenUnderlying;
     mapping(address => mapping(address => bool)) public isAssetOracle;
     mapping(address => FallbackPrice) public fallbackPriceOf;
+
+    /// @notice Timestamp until which the circuit breaker is active for a given asset.
+    ///         While active, a stale fallback price is served instead of 0, preventing DoS on user positions.
+    mapping(address => uint256) public circuitBreakerExpiry;
 
     /// @param initialOwner Address that receives administrative control.
     /// @param bandStdReference_ Band onchain standard reference contract.
@@ -208,6 +218,29 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
         emit AssetConfigSet(asset);
     }
 
+    /// @notice Activates the circuit breaker for an asset for up to `duration` seconds.
+    /// @dev Use when the fallback oracle reporter is down and positions would otherwise be DoS'd.
+    ///      While active, _readFallback returns the last cached price regardless of staleness.
+    ///      The breaker expires automatically; call deactivateCircuitBreaker to cancel early.
+    /// @param asset Asset whose fallback staleness check should be bypassed.
+    /// @param duration Seconds from now until the circuit breaker expires (max CIRCUIT_BREAKER_MAX_DURATION).
+    function activateCircuitBreaker(address asset, uint256 duration) external onlyOwner {
+        if (asset == address(0)) revert InvalidAsset();
+        if (duration > CIRCUIT_BREAKER_MAX_DURATION) {
+            revert CircuitBreakerDurationTooLong(duration, CIRCUIT_BREAKER_MAX_DURATION);
+        }
+        uint256 expiresAt = block.timestamp + duration;
+        circuitBreakerExpiry[asset] = expiresAt;
+        emit CircuitBreakerActivated(asset, expiresAt);
+    }
+
+    /// @notice Deactivates the circuit breaker for an asset before its expiry.
+    function deactivateCircuitBreaker(address asset) external onlyOwner {
+        if (asset == address(0)) revert InvalidAsset();
+        circuitBreakerExpiry[asset] = 0;
+        emit CircuitBreakerDeactivated(asset);
+    }
+
     /// @notice Returns the currently selected underlying price for a cToken market.
     /// @param cToken Market whose underlying asset price is requested.
     /// @return Price scaled to 1e18, or zero if unavailable.
@@ -271,10 +304,11 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
     function _readChainlink(AssetConfig storage cfg) internal view returns (uint256) {
         if (cfg.chainlinkFeed == address(0) || cfg.chainlinkHeartbeat == 0) return 0;
 
-        (, int256 answer,, uint256 updatedAt, uint80 answeredInRound) =
+        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) =
             IChainlinkAggregatorV3(cfg.chainlinkFeed).latestRoundData();
 
-        if (answer <= 0 || answeredInRound == 0 || updatedAt == 0) return 0;
+        // answeredInRound < roundId means the answer comes from a stale round (Chainlink standard check).
+        if (answer <= 0 || updatedAt == 0 || answeredInRound < roundId) return 0;
         if (block.timestamp > updatedAt + cfg.chainlinkHeartbeat) return 0;
 
         uint8 decimals = IChainlinkAggregatorV3(cfg.chainlinkFeed).decimals();
@@ -308,7 +342,14 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
 
         FallbackPrice storage p = fallbackPriceOf[asset];
         if (p.priceMantissa == 0 || p.updatedAt == 0) return 0;
-        if (block.timestamp > p.updatedAt + cfg.fallbackMaxDelay) return 0;
+
+        // Circuit breaker: if active, serve the last cached price regardless of staleness.
+        // This prevents an oracle outage from immediately DoS'ing all user positions in the market.
+        // The breaker gives the team time to restore the reporter before the freeze kicks in.
+        uint256 cbExpiry = circuitBreakerExpiry[asset];
+        bool circuitBreakerActive = cbExpiry != 0 && block.timestamp <= cbExpiry;
+
+        if (!circuitBreakerActive && block.timestamp > p.updatedAt + cfg.fallbackMaxDelay) return 0;
         return p.priceMantissa;
     }
 }
