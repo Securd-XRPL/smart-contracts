@@ -43,4 +43,22 @@ describe("XRPL user proxies", function () {
     await proxy.connect(controller).sweepToken(token.target, recipient.address, 100n);
     expect(await token.balanceOf(recipient.address)).to.equal(100n);
   });
+
+  it("allows only the controller to sweep native XRP/ETH", async function () {
+    const [controller, other, recipient] = await ethers.getSigners();
+    const Proxy = await ethers.getContractFactory("XRPLUserProxy");
+    const proxy = await Proxy.deploy(controller.address, ethers.encodeBytes32String("carol"));
+
+    await ethers.provider.send("hardhat_setBalance", [proxy.target, "0x1000000000000000000"]);
+
+    await expect(proxy.connect(other).sweepNative(recipient.address, 1n)).to.be.revertedWithCustomError(
+      proxy,
+      "NotController"
+    );
+
+    const balanceBefore = await ethers.provider.getBalance(recipient.address);
+    await proxy.connect(controller).sweepNative(recipient.address, ethers.parseEther("0.5"));
+    const balanceAfter = await ethers.provider.getBalance(recipient.address);
+    expect(balanceAfter - balanceBefore).to.equal(ethers.parseEther("0.5"));
+  });
 });

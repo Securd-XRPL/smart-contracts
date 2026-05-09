@@ -8,9 +8,15 @@ contract MockBandStdReference {
         uint256 lastUpdatedQuote;
     }
 
+    address public immutable deployer;
     ReferenceData public data;
 
+    constructor() {
+        deployer = msg.sender;
+    }
+
     function setReferenceData(uint256 rate_, uint256 lastUpdatedBase_, uint256 lastUpdatedQuote_) external {
+        require(msg.sender == deployer, "MockBandStdReference: only deployer");
         data = ReferenceData({rate: rate_, lastUpdatedBase: lastUpdatedBase_, lastUpdatedQuote: lastUpdatedQuote_});
     }
 

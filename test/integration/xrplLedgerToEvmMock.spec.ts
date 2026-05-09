@@ -47,7 +47,6 @@ describe("XRPL Ledger to XRPL EVM mock receiver", function () {
     expect(lastMessage.xrplAccount).to.equal(xrplAccount);
     expect(lastMessage.memo).to.equal(memo);
     expect(lastMessage.amount).to.equal(amount);
-    expect(lastMessage.payload).to.equal(payload);
   });
 
   it("rejects direct calls that do not come from the Axelar gateway", async function () {
@@ -57,6 +56,21 @@ describe("XRPL Ledger to XRPL EVM mock receiver", function () {
     await expect(
       receiver.connect(relayer).execute(ethers.ZeroHash, sourceChain, sourceAddress, payload)
     ).to.be.revertedWithCustomError(receiver, "NotGateway");
+  });
+
+  it("does not store raw payload bytes in lastReceivedMessage", async function () {
+    const { gateway, receiver, sourceChain, sourceAddress } = await deployFixture();
+    const xrplAccount = ethers.encodeBytes32String("bob-xrpl");
+    const payload = encodeXrplPaymentPayload(xrplAccount, "SECURD:MOCK_SUPPLY", 500n);
+    const commandId = ethers.keccak256(ethers.toUtf8Bytes("cmd-2"));
+
+    await ethers.provider.send("hardhat_setBalance", [gateway.target, "0x1000000000000000000"]);
+    await receiver
+      .connect(await ethers.getImpersonatedSigner(gateway.target as string))
+      .execute(commandId, sourceChain, sourceAddress, payload);
+
+    const lastMessage = await receiver.lastReceivedMessage();
+    expect((lastMessage as unknown as Record<string, unknown>)["payload"]).to.be.undefined;
   });
 
   it("rejects gateway calls that were not approved or are from untrusted XRPL sources", async function () {

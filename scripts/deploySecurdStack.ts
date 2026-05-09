@@ -27,6 +27,23 @@ function optionalEnv(name: string, fallback: string): string {
   return value && value.trim().length > 0 ? value.trim() : fallback;
 }
 
+function safeParseJson<T>(raw: string, envVarName: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(`${envVarName} contains invalid JSON`);
+  }
+}
+
+function confinedOutputPath(rawPath: string): string {
+  const resolved = path.resolve(rawPath);
+  const cwd = process.cwd();
+  if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+    throw new Error(`DEPLOYMENT_OUTPUT_FILE must be within the working directory (got: ${resolved})`);
+  }
+  return resolved;
+}
+
 function parseScaled(value: string): bigint {
   return BigInt(value);
 }
@@ -88,8 +105,11 @@ async function maybeTransferOwnership(contract: { owner(): Promise<string>; tran
 
 async function main() {
   const owner = requiredEnv("DEPLOY_OWNER");
+  if (!ethers.isAddress(owner)) throw new Error(`DEPLOY_OWNER is not a valid address: ${owner}`);
   const axelarGateway = requiredEnv("AXELAR_GATEWAY");
+  if (!ethers.isAddress(axelarGateway)) throw new Error(`AXELAR_GATEWAY is not a valid address: ${axelarGateway}`);
   const interchainTokenService = requiredEnv("INTERCHAIN_TOKEN_SERVICE");
+  if (!ethers.isAddress(interchainTokenService)) throw new Error(`INTERCHAIN_TOKEN_SERVICE is not a valid address: ${interchainTokenService}`);
   const destinationChain = requiredEnv("XRPL_DESTINATION_CHAIN");
 
   const bandStdReference = optionalEnv("BAND_STD_REFERENCE", ethers.ZeroAddress);
@@ -313,14 +333,14 @@ async function main() {
   }
 
   if (medianOracleReporter && medianReporterConfigRaw) {
-    const configs: Array<{ asset: string; roundDuration: string; minSubmissions: number }> = JSON.parse(medianReporterConfigRaw);
+    const configs = safeParseJson<Array<{ asset: string; roundDuration: string; minSubmissions: number }>>(medianReporterConfigRaw, "SECURD_MEDIAN_REPORTER_CONFIG");
     for (const config of configs) {
       await (await medianOracleReporter.setAssetConfig(config.asset, BigInt(config.roundDuration), config.minSubmissions)).wait();
     }
   }
 
   if (medianOracleReporter && medianReporterReportersRaw) {
-    const reporters: Array<{ asset: string; reporter: string }> = JSON.parse(medianReporterReportersRaw);
+    const reporters = safeParseJson<Array<{ asset: string; reporter: string }>>(medianReporterReportersRaw, "SECURD_MEDIAN_REPORTER_REPORTERS");
     for (const reporterConfig of reporters) {
       await (await medianOracleReporter.setReporter(reporterConfig.asset, reporterConfig.reporter, true)).wait();
     }
@@ -379,10 +399,9 @@ async function main() {
   }
 
   if (deploymentOutputFile) {
-    const resolved = path.resolve(deploymentOutputFile);
+    const resolved = confinedOutputPath(deploymentOutputFile);
     fs.mkdirSync(path.dirname(resolved), { recursive: true });
-    fs.writeFileSync(resolved, `${JSON.stringify(summary, null, 2)}
-`);
+    fs.writeFileSync(resolved, `${JSON.stringify(summary, null, 2)}\n`);
     console.log(`Deployment summary written to ${resolved}`);
   }
 }

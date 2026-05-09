@@ -5,10 +5,12 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract MockERC20 is ERC20 {
     uint8 private immutable _decimals;
+    address public immutable deployer;
     bool public failTransfers;
 
     constructor(string memory name_, string memory symbol_, uint8 decimals_) ERC20(name_, symbol_) {
         _decimals = decimals_;
+        deployer = msg.sender;
     }
 
     function decimals() public view override returns (uint8) {
@@ -20,6 +22,7 @@ contract MockERC20 is ERC20 {
     }
 
     function setFailTransfers(bool fail) external {
+        require(msg.sender == deployer, "MockERC20: only deployer");
         failTransfers = fail;
     }
 

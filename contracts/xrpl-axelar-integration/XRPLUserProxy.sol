@@ -57,5 +57,13 @@ contract XRPLUserProxy {
         if (out.length > 0 && !abi.decode(out, (bool))) revert TokenTransferFailed();
     }
 
+    /// @notice Sweeps native XRP/ETH held by the proxy.
+    /// @param to Recipient of the native value.
+    /// @param amount Amount in wei to transfer.
+    function sweepNative(address payable to, uint256 amount) external onlyController {
+        (bool ok,) = to.call{value: amount}("");
+        if (!ok) revert CallFailed("");
+    }
+
     receive() external payable {}
 }

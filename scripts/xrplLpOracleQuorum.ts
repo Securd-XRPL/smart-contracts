@@ -79,7 +79,8 @@ export function median(values: bigint[]): bigint {
 
 export function aggregateLpOracleReports(
   reports: LpOracleRecoveredReport[],
-  config: LpOracleQuorumConfig
+  config: LpOracleQuorumConfig,
+  allowedSigners?: Set<string>
 ): bigint {
   if (reports.length < config.minSigners) {
     throw new Error(`Insufficient reports: have ${reports.length}, need ${config.minSigners}`);
@@ -100,6 +101,9 @@ export function aggregateLpOracleReports(
     }
     if (report.validUntil < BigInt(Math.floor(Date.now() / 1000))) {
       throw new Error("Report expired");
+    }
+    if (allowedSigners && !allowedSigners.has(report.signer.toLowerCase())) {
+      throw new Error(`Signer not in authorized set: ${report.signer}`);
     }
   }
 

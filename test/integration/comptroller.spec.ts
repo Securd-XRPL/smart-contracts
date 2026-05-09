@@ -372,4 +372,22 @@ describe("Comptroller integration", function () {
 
     expect(await comptroller.repayBorrowAllowed.staticCall(other.address, liquidator.address, borrower.address, 1n)).to.equal(9);
   });
+
+  it("rejects invalid implementation addresses in CErc20Delegator._setImplementation", async function () {
+    const { owner, cCollateral } = await deployFixture();
+    const Delegate = await ethers.getContractFactory("CErc20Delegate");
+    const newDelegate = await Delegate.deploy();
+
+    await expect(
+      cCollateral.connect(owner)._setImplementation(ethers.ZeroAddress, false, "0x")
+    ).to.be.revertedWith("CErc20Delegator::_setImplementation: implementation=0");
+
+    await expect(
+      cCollateral.connect(owner)._setImplementation(owner.address, false, "0x")
+    ).to.be.revertedWith("CErc20Delegator::_setImplementation: not a contract");
+
+    await expect(
+      cCollateral.connect(owner)._setImplementation(newDelegate.target, false, "0x")
+    ).to.not.be.reverted;
+  });
 });

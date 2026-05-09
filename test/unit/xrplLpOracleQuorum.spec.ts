@@ -77,6 +77,42 @@ describe("XRPL LP oracle quorum", function () {
     );
   });
 
+  it("rejects signers not in the authorized set", async function () {
+    const wallet1 = ethers.Wallet.createRandom();
+    const wallet2 = ethers.Wallet.createRandom();
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    const reports = [
+      {
+        poolId: poolIdFromName("XRPL-USDC-XRP"),
+        collateralAsset: "0x0000000000000000000000000000000000000001",
+        roundId: 1n,
+        nonce: 1n,
+        observedAt: now,
+        validUntil: now + 300n,
+        priceMantissa: 2n * 10n ** 18n,
+        signer: wallet1.address
+      },
+      {
+        poolId: poolIdFromName("XRPL-USDC-XRP"),
+        collateralAsset: "0x0000000000000000000000000000000000000001",
+        roundId: 1n,
+        nonce: 1n,
+        observedAt: now,
+        validUntil: now + 300n,
+        priceMantissa: 2n * 10n ** 18n,
+        signer: wallet2.address
+      }
+    ];
+
+    const allowedSigners = new Set([wallet1.address.toLowerCase()]);
+    expect(() => aggregateLpOracleReports(reports, { minSigners: 2, maxSpreadBps: 4000 }, allowedSigners)).to.throw(
+      `Signer not in authorized set: ${wallet2.address}`
+    );
+
+    const allAllowed = new Set([wallet1.address.toLowerCase(), wallet2.address.toLowerCase()]);
+    expect(aggregateLpOracleReports(reports, { minSigners: 2, maxSpreadBps: 4000 }, allAllowed)).to.equal(2n * 10n ** 18n);
+  });
+
   it("rejects expired reports", async function () {
     const now = BigInt(Math.floor(Date.now() / 1000));
     const reports = [

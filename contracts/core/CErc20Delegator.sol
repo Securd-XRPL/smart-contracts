@@ -60,6 +60,8 @@ contract CErc20Delegator is CTokenInterface, CErc20Interface, CDelegatorInterfac
      */
     function _setImplementation(address implementation_, bool allowResign, bytes memory becomeImplementationData)override public {
         require(msg.sender == admin, "CErc20Delegator::_setImplementation: Caller must be admin");
+        require(implementation_ != address(0), "CErc20Delegator::_setImplementation: implementation=0");
+        require(implementation_.code.length > 0, "CErc20Delegator::_setImplementation: not a contract");
 
         if (allowResign) {
             delegateToImplementation(abi.encodeWithSignature("_resignImplementation()"));

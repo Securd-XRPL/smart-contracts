@@ -28,7 +28,6 @@ contract MockXrplEvmReceiver is Ownable {
         bytes32 xrplAccount;
         string memo;
         uint256 amount;
-        bytes payload;
     }
 
     IAxelarGateway public immutable gateway;
@@ -73,8 +72,7 @@ contract MockXrplEvmReceiver is Ownable {
             sourceAddress: sourceAddress,
             xrplAccount: xrplAccount,
             memo: memo,
-            amount: amount,
-            payload: payload
+            amount: amount
         });
 
         emit XrplLedgerMessageReceived(commandId, sourceChain, sourceAddress, xrplAccount, memo, amount);
