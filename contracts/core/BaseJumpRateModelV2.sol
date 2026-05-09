@@ -56,6 +56,7 @@ abstract contract BaseJumpRateModelV2 is InterestRateModel {
      * @param owner_ The address of the owner, i.e. the Timelock contract (which has the ability to update parameters directly)
      */
     constructor(uint baseRatePerYear, uint multiplierPerYear, uint jumpMultiplierPerYear, uint kink_, address owner_) internal {
+        require(owner_ != address(0), "owner=0");
         owner = owner_;
 
         updateJumpRateModelInternal(baseRatePerYear,  multiplierPerYear, jumpMultiplierPerYear, kink_);
@@ -85,6 +86,12 @@ abstract contract BaseJumpRateModelV2 is InterestRateModel {
         // Utilization rate is 0 when there are no borrows
         if (borrows == 0) {
             return 0;
+        }
+
+        // If reserves exceed cash + borrows (e.g., due to donated assets being taken as reserves),
+        // the denominator would underflow. Clamp to 100% utilization instead of reverting.
+        if (cash + borrows <= reserves) {
+            return BASE;
         }
 
         return borrows * BASE / (cash + borrows - reserves);
@@ -132,7 +139,7 @@ abstract contract BaseJumpRateModelV2 is InterestRateModel {
      * @param kink_ The utilization point at which the jump multiplier is applied
      */
     function updateJumpRateModelInternal(uint baseRatePerYear, uint multiplierPerYear, uint jumpMultiplierPerYear, uint kink_) internal {
-        require(kink_ > 0, "kink=0");
+        require(kink_ > 0 && kink_ <= BASE, "kink out of range");
         baseRatePerBlock = baseRatePerYear / blocksPerYear;
         multiplierPerBlock = (multiplierPerYear * BASE) / (blocksPerYear * kink_);
         jumpMultiplierPerBlock = jumpMultiplierPerYear / blocksPerYear;

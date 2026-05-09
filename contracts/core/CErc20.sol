@@ -126,6 +126,22 @@ contract CErc20 is CToken, CErc20Interface {
         require(address(token) != underlying, "CErc20::sweepToken: can not sweep underlying token");
         uint256 balance = token.balanceOf(address(this));
         token.transfer(admin, balance);
+
+        bool success;
+        assembly {
+            switch returndatasize()
+                case 0 {
+                    success := not(0)
+                }
+                case 32 {
+                    returndatacopy(0, 0, 32)
+                    success := mload(0)
+                }
+                default {
+                    revert(0, 0)
+                }
+        }
+        require(success, "CErc20::sweepToken: transfer failed");
     }
 
     /**

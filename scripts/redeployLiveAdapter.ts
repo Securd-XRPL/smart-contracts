@@ -1,8 +1,24 @@
 import { ethers } from 'hardhat';
 
+const EXPECTED_CHAIN_ID = 1440002; // XRPL EVM testnet
+
+function requiredEnvAddr(name: string): string {
+  const v = process.env[name]?.trim();
+  if (!v) throw new Error(`Missing required env var: ${name}`);
+  if (!ethers.isAddress(v)) throw new Error(`${name} is not a valid address: ${v}`);
+  return v;
+}
+
 async function main() {
   const [deployer] = await ethers.getSigners();
-  const owner = deployer.address;
+  const network = await ethers.provider.getNetwork();
+  if (network.chainId !== BigInt(EXPECTED_CHAIN_ID)) {
+    throw new Error(`Wrong network: expected chainId ${EXPECTED_CHAIN_ID}, got ${network.chainId}`);
+  }
+
+  const owner = process.env.DEPLOY_OWNER?.trim() || deployer.address;
+  if (!ethers.isAddress(owner)) throw new Error(`DEPLOY_OWNER is not a valid address: ${owner}`);
+
   const gateway = '0xe432150cce91c13a887f7D836923d5597adD8E31';
   const its = '0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C';
   const proxyFactoryAddr = '0x3C03CF51E4BFa50B5482165Cc053D71698b780f4';
@@ -39,8 +55,14 @@ async function main() {
   await (await adapter.setTrustedGmpSource('xrpl', xrplAddress, true)).wait();
   await (await adapter.setIntentSigner(xrplAccount, owner)).wait();
 
+  if (owner.toLowerCase() !== deployer.address.toLowerCase()) {
+    console.log(`Transferring adapter ownership to: ${owner}`);
+    await (await adapter.transferOwnership(owner)).wait();
+  }
+
   console.log(JSON.stringify({
-    deployer: owner,
+    deployer: deployer.address,
+    owner,
     adapter: adapterAddr,
     gateway,
     its,

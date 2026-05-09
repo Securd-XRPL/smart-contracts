@@ -304,14 +304,35 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
     function _readChainlink(AssetConfig storage cfg) internal view returns (uint256) {
         if (cfg.chainlinkFeed == address(0) || cfg.chainlinkHeartbeat == 0) return 0;
 
-        (uint80 roundId, int256 answer,, uint256 updatedAt, uint80 answeredInRound) =
-            IChainlinkAggregatorV3(cfg.chainlinkFeed).latestRoundData();
+        uint80 roundId;
+        int256 answer;
+        uint256 updatedAt;
+        uint80 answeredInRound;
+        try IChainlinkAggregatorV3(cfg.chainlinkFeed).latestRoundData() returns (
+            uint80 _roundId, int256 _answer, uint256, uint256 _updatedAt, uint80 _answeredInRound
+        ) {
+            roundId = _roundId;
+            answer = _answer;
+            updatedAt = _updatedAt;
+            answeredInRound = _answeredInRound;
+        } catch {
+            return 0;
+        }
 
         // answeredInRound < roundId means the answer comes from a stale round (Chainlink standard check).
         if (answer <= 0 || updatedAt == 0 || answeredInRound < roundId) return 0;
         if (block.timestamp > updatedAt + cfg.chainlinkHeartbeat) return 0;
 
-        uint8 decimals = IChainlinkAggregatorV3(cfg.chainlinkFeed).decimals();
+        uint8 decimals;
+        try IChainlinkAggregatorV3(cfg.chainlinkFeed).decimals() returns (uint8 d) {
+            decimals = d;
+        } catch {
+            return 0;
+        }
+
+        // Guard against absurdly large exponents that would cause arithmetic overflow.
+        if (decimals > 36) return 0;
+
         uint256 unsignedAnswer = uint256(answer);
 
         if (decimals == 18) return unsignedAnswer;
@@ -325,8 +346,14 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
             return 0;
         }
 
-        IBandStdReference.ReferenceData memory data =
-            IBandStdReference(bandStdReference).getReferenceData(cfg.bandBaseSymbol, cfg.bandQuoteSymbol);
+        IBandStdReference.ReferenceData memory data;
+        try IBandStdReference(bandStdReference).getReferenceData(cfg.bandBaseSymbol, cfg.bandQuoteSymbol) returns (
+            IBandStdReference.ReferenceData memory d
+        ) {
+            data = d;
+        } catch {
+            return 0;
+        }
 
         if (data.rate == 0 || data.lastUpdatedBase == 0 || data.lastUpdatedQuote == 0) return 0;
 
@@ -343,13 +370,18 @@ contract SecurdPriceOracle is Ownable, PriceOracle {
         FallbackPrice storage p = fallbackPriceOf[asset];
         if (p.priceMantissa == 0 || p.updatedAt == 0) return 0;
 
-        // Circuit breaker: if active, serve the last cached price regardless of staleness.
-        // This prevents an oracle outage from immediately DoS'ing all user positions in the market.
-        // The breaker gives the team time to restore the reporter before the freeze kicks in.
+        // Circuit breaker: if active, serve the last cached price to prevent oracle-outage DoS on user positions.
+        // Hard cap: even under a circuit breaker, reject prices older than CIRCUIT_BREAKER_MAX_DURATION (12 h).
+        // This bounds the maximum stale-price window regardless of how long the breaker remains active.
         uint256 cbExpiry = circuitBreakerExpiry[asset];
         bool circuitBreakerActive = cbExpiry != 0 && block.timestamp <= cbExpiry;
 
-        if (!circuitBreakerActive && block.timestamp > p.updatedAt + cfg.fallbackMaxDelay) return 0;
+        if (circuitBreakerActive) {
+            if (block.timestamp > p.updatedAt + CIRCUIT_BREAKER_MAX_DURATION) return 0;
+            return p.priceMantissa;
+        }
+
+        if (block.timestamp > p.updatedAt + cfg.fallbackMaxDelay) return 0;
         return p.priceMantissa;
     }
 }

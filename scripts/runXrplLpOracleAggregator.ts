@@ -75,13 +75,22 @@ async function main() {
   const submissionsPath = path.resolve(config.submissionsFile);
   const raw = JSON.parse(fs.readFileSync(submissionsPath, "utf8")) as SignedReportFileEntry[];
 
-  const recovered = await Promise.all(
+  const recoveredAll = await Promise.all(
     raw.map(async (entry) => {
       const report = parseReport(entry);
       const signer = await recoverLpOracleReportSigner(domain, report, entry.signature);
       return { ...report, signer };
     })
   );
+
+  // Deduplicate by signer: retain only the first submission from each signer to prevent double-counting.
+  const seenSigners = new Set<string>();
+  const recovered = recoveredAll.filter(({ signer }) => {
+    const key = signer.toLowerCase();
+    if (seenSigners.has(key)) return false;
+    seenSigners.add(key);
+    return true;
+  });
 
   const medianPrice = aggregateLpOracleReports(recovered, {
     minSigners: config.minSigners,

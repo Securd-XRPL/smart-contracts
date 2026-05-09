@@ -42,6 +42,9 @@ contract Unitroller is UnitrollerAdminStorage, ComptrollerErrorReporter {
             return fail(Error.UNAUTHORIZED, FailureInfo.SET_PENDING_IMPLEMENTATION_OWNER_CHECK);
         }
 
+        require(newPendingImplementation != address(0), "impl=0");
+        require(newPendingImplementation.code.length > 0, "impl not a contract");
+
         address oldPendingImplementation = pendingComptrollerImplementation;
 
         pendingComptrollerImplementation = newPendingImplementation;

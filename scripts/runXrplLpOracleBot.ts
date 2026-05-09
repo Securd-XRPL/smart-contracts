@@ -193,6 +193,19 @@ async function sendAlert(config: ReturnType<typeof loadXrplLpOracleConfig>, mess
     return;
   }
 
+  // Restrict webhook to HTTPS to prevent SSRF via plain-HTTP or non-HTTP schemes.
+  let parsedWebhook: URL;
+  try {
+    parsedWebhook = new URL(webhookUrl);
+  } catch {
+    console.error("[alert-failed] webhook URL is not a valid URL");
+    return;
+  }
+  if (parsedWebhook.protocol !== "https:") {
+    console.error("[alert-failed] webhook URL must use HTTPS");
+    return;
+  }
+
   try {
     await fetch(webhookUrl, {
       method: "POST",
@@ -284,7 +297,9 @@ async function processPool(
   const tx = await publisher.postFallbackPrice(pool.evm.collateralAsset, nextMantissa);
   const receipt = await tx.wait();
 
+  // Merge publish fields into existing state to preserve lastReserve* and lastObserved* values.
   state.pools[pool.name] = {
+    ...state.pools[pool.name],
     lastPublishedMantissa: nextMantissa.toString(),
     lastPublishedAt: now
   };
@@ -301,7 +316,12 @@ export async function main() {
   const wallet = new ethers.Wallet(privateKey, provider);
   const oracleAddress = requiredEnv("LP_ORACLE_CONTRACT");
   const oracle = new ethers.Contract(oracleAddress, ORACLE_ABI, provider);
-  const statePath = path.resolve(process.env.LP_ORACLE_STATE_PATH || "./tmp/xrpl-lp-oracle-state.json");
+  const statePathInput = process.env.LP_ORACLE_STATE_PATH || "./tmp/xrpl-lp-oracle-state.json";
+  const statePath = path.resolve(statePathInput);
+  const allowedStateDir = path.resolve("./tmp");
+  if (!statePath.startsWith(allowedStateDir + path.sep) && statePath !== allowedStateDir) {
+    throw new Error(`LP_ORACLE_STATE_PATH must be inside ./tmp (got: ${statePath})`);
+  }
   const state = loadState(statePath);
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
 

@@ -28,6 +28,9 @@ async function main() {
     .filter(Boolean);
 
   for (const executor of keepers) {
+    if (!ethers.isAddress(executor)) {
+      throw new Error(`KEEPER_EXECUTORS contains invalid address: ${executor}`);
+    }
     console.log(`Authorizing keeper: ${executor}`);
     const tx = await keeper.setKeeper(executor, true);
     await tx.wait();
@@ -35,20 +38,40 @@ async function main() {
 
   const assetLimits = process.env.KEEPER_ASSET_LIMITS;
   if (assetLimits) {
-    const parsed: Array<{ asset: string; limit: string }> = JSON.parse(assetLimits);
+    let parsed: Array<{ asset: string; limit: string }>;
+    try {
+      parsed = JSON.parse(assetLimits);
+    } catch {
+      throw new Error("KEEPER_ASSET_LIMITS is not valid JSON");
+    }
     for (const item of parsed) {
+      if (!ethers.isAddress(item.asset)) throw new Error(`Invalid asset address in KEEPER_ASSET_LIMITS: ${item.asset}`);
+      let limitBigInt: bigint;
+      try { limitBigInt = BigInt(item.limit); } catch {
+        throw new Error(`Invalid limit in KEEPER_ASSET_LIMITS for ${item.asset}: ${item.limit}`);
+      }
       console.log(`Setting asset limit: ${item.asset} -> ${item.limit}`);
-      const tx = await keeper.setAssetLimit(item.asset, BigInt(item.limit));
+      const tx = await keeper.setAssetLimit(item.asset, limitBigInt);
       await tx.wait();
     }
   }
 
   const marketLimits = process.env.KEEPER_MARKET_LIMITS;
   if (marketLimits) {
-    const parsed: Array<{ market: string; limit: string }> = JSON.parse(marketLimits);
+    let parsed: Array<{ market: string; limit: string }>;
+    try {
+      parsed = JSON.parse(marketLimits);
+    } catch {
+      throw new Error("KEEPER_MARKET_LIMITS is not valid JSON");
+    }
     for (const item of parsed) {
+      if (!ethers.isAddress(item.market)) throw new Error(`Invalid market address in KEEPER_MARKET_LIMITS: ${item.market}`);
+      let limitBigInt: bigint;
+      try { limitBigInt = BigInt(item.limit); } catch {
+        throw new Error(`Invalid limit in KEEPER_MARKET_LIMITS for ${item.market}: ${item.limit}`);
+      }
       console.log(`Setting market limit: ${item.market} -> ${item.limit}`);
-      const tx = await keeper.setMarketLimit(item.market, BigInt(item.limit));
+      const tx = await keeper.setMarketLimit(item.market, limitBigInt);
       await tx.wait();
     }
   }

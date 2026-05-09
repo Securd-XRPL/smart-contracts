@@ -39,6 +39,11 @@ contract SecurdMedianOracleReporter is Ownable, Pausable {
     event AssetConfigSet(address indexed asset, uint64 roundDuration, uint8 minSubmissions);
     event PriceSubmitted(address indexed asset, uint256 indexed roundId, address indexed reporter, uint256 priceMantissa);
     event RoundPosted(address indexed asset, uint256 indexed roundId, uint256 medianPriceMantissa, uint256 submissions);
+    event RoundCancelled(address indexed asset, uint256 indexed roundId);
+
+    /// @notice Maximum number of price submissions accepted per round.
+    /// @dev Caps the O(n²) insertion-sort cost in _median to a bounded, safe gas limit.
+    uint8 public constant MAX_SUBMISSIONS_PER_ROUND = 50;
 
     ISecurdFallbackOracle public immutable fallbackOracle;
 
@@ -71,6 +76,20 @@ contract SecurdMedianOracleReporter is Ownable, Pausable {
 
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /// @notice Cancels a stuck round, preventing it from blocking future submissions.
+    /// @dev Marks the round finalized without posting a price. Use when a round cannot reach quorum
+    ///      (e.g., a reporter submitted an invalid price that the others refuse to match).
+    function cancelRound(address asset, uint256 roundId) external onlyOwner {
+        if (asset == address(0)) revert InvalidAsset();
+        if (roundId == 0) revert InvalidRound();
+
+        RoundState storage round = roundStateOf[asset][roundId];
+        if (round.finalized) revert RoundAlreadyFinalized();
+
+        round.finalized = true;
+        emit RoundCancelled(asset, roundId);
     }
 
     function setReporter(address asset, address reporter, bool allowed) external onlyOwner {
@@ -109,6 +128,8 @@ contract SecurdMedianOracleReporter is Ownable, Pausable {
         if (submittedPriceOf[asset][roundId][msg.sender] != 0) {
             revert DuplicateSubmission(asset, roundId, msg.sender);
         }
+
+        if (_roundPrices[asset][roundId].length >= MAX_SUBMISSIONS_PER_ROUND) revert InvalidSubmission();
 
         submittedPriceOf[asset][roundId][msg.sender] = priceMantissa;
         round.submissionCount += 1;

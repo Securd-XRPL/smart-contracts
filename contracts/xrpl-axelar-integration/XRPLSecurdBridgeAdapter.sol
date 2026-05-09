@@ -80,6 +80,7 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
     );
 
     uint16 public constant ENVELOPE_VERSION = 1;
+    bytes32 public constant ITS_EXECUTE_SUCCESS = keccak256("its-execute-success");
 
     struct MarketConfig {
         address underlying;
@@ -271,8 +272,9 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             _withdraw(proxy, envelope.market, envelope.amount);
         }
 
-        _egress(proxy, envelope);
+        // Consume nonce before egress so a re-entrant ITS callback cannot replay the same intent.
         _consumeNonce(envelope.xrplAccount);
+        _egress(proxy, envelope);
 
         emit IntentExecuted(
             envelope.intentId,
@@ -296,7 +298,7 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         bytes32 tokenId,
         address token,
         uint256 amount
-    ) external whenNotPaused {
+    ) external whenNotPaused returns (bytes32) {
         commandId; // command id is consumed by ITS/gateway; intent hash provides idempotency at app layer.
         if (msg.sender != address(interchainTokenService)) revert NotInterchainTokenService();
 
@@ -323,7 +325,7 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
 
         if (!_lockIntent(envelope.intentId, payloadHash)) {
             emit IntentDuplicateIgnored(envelope.intentId, payloadHash);
-            return;
+            return ITS_EXECUTE_SUCCESS;
         }
 
         _validateNonce(envelope.xrplAccount, envelope.nonce);
@@ -347,6 +349,8 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             amount,
             true
         );
+
+        return ITS_EXECUTE_SUCCESS;
     }
 
     // ========= Internal execution =========
@@ -460,9 +464,18 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, uint256(0)));
         _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, amount));
 
-        bytes memory out =
-            _proxyCall(proxy, market, abi.encodeWithSelector(CErc20Interface.repayBorrow.selector, amount));
-        _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.REPAY), out);
+        // Use raw (non-reverting) proxy call so we can always reset the allowance — even if repayBorrow reverts.
+        (bool repayOk, bytes memory repayOut) =
+            _proxyCallRaw(proxy, market, abi.encodeWithSelector(CErc20Interface.repayBorrow.selector, amount));
+
+        // Reset allowance unconditionally — mirrors the _supply pattern; prevents stale approval on failure paths.
+        _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, uint256(0)));
+
+        if (!repayOk) {
+            if (repayOut.length == 0) revert ProxyCallFailed(market);
+            assembly { revert(add(repayOut, 0x20), mload(repayOut)) }
+        }
+        _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.REPAY), repayOut);
     }
 
     function _borrow(address proxy, address market, uint256 amount) internal {

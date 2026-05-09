@@ -2,10 +2,14 @@
 pragma solidity 0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CTokenInterface} from "../core/CTokenInterfaces.sol";
 
 contract MockCErc20Market {
+    using SafeERC20 for IERC20;
+
     IERC20 public immutable underlying;
+    address public immutable deployer;
     uint256 public nextMintResult;
     uint256 public nextRepayResult;
     uint256 public nextBorrowResult;
@@ -14,6 +18,7 @@ contract MockCErc20Market {
 
     constructor(address underlying_) {
         underlying = IERC20(underlying_);
+        deployer = msg.sender;
     }
 
     function setResults(
@@ -23,6 +28,7 @@ contract MockCErc20Market {
         uint256 redeemResult,
         uint256 liquidationResult
     ) external {
+        require(msg.sender == deployer, "only deployer");
         nextMintResult = mintResult;
         nextRepayResult = repayResult;
         nextBorrowResult = borrowResult;
@@ -31,27 +37,27 @@ contract MockCErc20Market {
     }
 
     function mint(uint256 mintAmount) external returns (uint256) {
-        underlying.transferFrom(msg.sender, address(this), mintAmount);
+        underlying.safeTransferFrom(msg.sender, address(this), mintAmount);
         return nextMintResult;
     }
 
     function repayBorrow(uint256 repayAmount) external returns (uint256) {
-        underlying.transferFrom(msg.sender, address(this), repayAmount);
+        underlying.safeTransferFrom(msg.sender, address(this), repayAmount);
         return nextRepayResult;
     }
 
     function borrow(uint256 borrowAmount) external returns (uint256) {
-        underlying.transfer(msg.sender, borrowAmount);
+        underlying.safeTransfer(msg.sender, borrowAmount);
         return nextBorrowResult;
     }
 
     function redeemUnderlying(uint256 redeemAmount) external returns (uint256) {
-        underlying.transfer(msg.sender, redeemAmount);
+        underlying.safeTransfer(msg.sender, redeemAmount);
         return nextRedeemResult;
     }
 
     function liquidateBorrow(address, uint256 repayAmount, CTokenInterface) external returns (uint256) {
-        underlying.transferFrom(msg.sender, address(this), repayAmount);
+        underlying.safeTransferFrom(msg.sender, address(this), repayAmount);
         return nextLiquidationResult;
     }
 

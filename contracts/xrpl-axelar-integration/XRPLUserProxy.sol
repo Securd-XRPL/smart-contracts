@@ -50,6 +50,8 @@ contract XRPLUserProxy {
     /// @param to Recipient of the swept tokens.
     /// @param amount Amount of tokens to transfer.
     function sweepToken(address token, address to, uint256 amount) external onlyController {
+        // Reject EOA token addresses: a call to an EOA returns (true, "") giving false success.
+        if (token.code.length == 0) revert TokenTransferFailed();
         (bool ok, bytes memory out) = token.call(abi.encodeWithSelector(IERC20.transfer.selector, to, amount));
         if (!ok) revert TokenTransferFailed();
         if (out.length > 0 && !abi.decode(out, (bool))) revert TokenTransferFailed();

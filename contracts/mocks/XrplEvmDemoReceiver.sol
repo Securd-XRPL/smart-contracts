@@ -19,7 +19,6 @@ import {IAxelarGateway} from "@axelar-network/axelar-gmp-sdk-solidity/contracts/
 contract XrplEvmDemoReceiver is Ownable {
     error InvalidGateway();
     error InvalidIts();
-    error NotGateway();
     error NotInterchainTokenService();
     error NotApprovedByGateway();
     error UntrustedSource(bytes32 sourceId);
@@ -120,13 +119,9 @@ contract XrplEvmDemoReceiver is Ownable {
         string calldata sourceAddress,
         bytes calldata payload
     ) external {
-        if (msg.sender != address(gateway)) revert NotGateway();
         if (!gateway.validateContractCall(commandId, sourceChain, sourceAddress, keccak256(payload))) {
             revert NotApprovedByGateway();
         }
-
-        bytes32 sourceId = keccak256(abi.encode(sourceChain, sourceAddress));
-        if (!trustedGmpSource[sourceId]) revert UntrustedSource(sourceId);
 
         (string memory sender, string memory message, uint256 xrpDrops) =
             abi.decode(payload, (string, string, uint256));
@@ -156,13 +151,14 @@ contract XrplEvmDemoReceiver is Ownable {
         bytes32 tokenId,
         address token,
         uint256 amount
-    ) external {
+    ) external returns (bytes32) {
         if (msg.sender != interchainTokenService) revert NotInterchainTokenService();
 
         bytes32 sourceId = keccak256(abi.encode(sourceChain, sourceAddress));
         if (!trustedItsSource[sourceId]) revert UntrustedSource(sourceId);
 
         _storeItsTransfer(commandId, sourceChain, tokenId, token, amount, data);
+        return keccak256("its-execute-success");
     }
 
     function _storeItsTransfer(
@@ -200,6 +196,13 @@ contract XrplEvmDemoReceiver is Ownable {
 
     function lastItsTransfer() external view returns (LastItsTransfer memory) {
         return _lastItsTransfer;
+    }
+
+    /// @notice Withdraws any native XRP accidentally sent to this contract.
+    function withdrawNative(address payable to, uint256 amount) external onlyOwner {
+        require(to != address(0), "to=0");
+        (bool ok,) = to.call{value: amount}("");
+        require(ok, "native transfer failed");
     }
 
     receive() external payable {}

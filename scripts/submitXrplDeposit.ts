@@ -129,6 +129,11 @@ async function main() {
   const depositAmountDrops = decimalEnv("XRPL_DEPOSIT_AMOUNT_DROPS");
   const gasFeeDrops = BigInt(optionalEnv("XRPL_DEPOSIT_GAS_FEE_DROPS", "0"));
   const totalPaymentDrops = depositAmountDrops + gasFeeDrops;
+  // XRPL drops have 6 decimals; native XRP on XRPL EVM has 18 decimals.
+  // The Axelar ITS scales the amount by 10^12 when delivering to XRPL EVM.
+  // The intent envelope must store the EVM-scaled amount to match what the ITS passes.
+  const DROPS_TO_EVM_SCALE = BigInt(10 ** 12);
+  const depositAmountEVM = depositAmountDrops * DROPS_TO_EVM_SCALE;
   const deadline = BigInt(optionalEnv("XRPL_DEPOSIT_DEADLINE", "0"));
   const payloadDestinationAddress = optionalEnv("XRPL_DEPOSIT_INTENT_DESTINATION_BYTES", "0x");
   const liveIts = optionalEnv("INTERCHAIN_TOKEN_SERVICE", "0xB5FB4BE02232B1bBA4dC8f81dc24C26980dE9e3C");
@@ -173,7 +178,7 @@ async function main() {
     market,
     underlying,
     actionType: 0,
-    amount: depositAmountDrops,
+    amount: depositAmountEVM,
     nonce,
     deadline,
     destinationAddress: payloadDestinationAddress,
@@ -213,12 +218,13 @@ async function main() {
     market,
     underlying,
     depositAmountDrops: depositAmountDrops.toString(),
+    depositAmountEVM: depositAmountEVM.toString(),
     gasFeeDrops: gasFeeDrops.toString(),
     totalPaymentDrops: totalPaymentDrops.toString(),
     nonce: nonce.toString(),
     intentId,
-    payload,
-    payment: tx
+    payloadBytes: payload.length / 2 - 1,  // log byte length only; payload contains the signed intent
+    payment: { ...tx, Memos: "[redacted]" }
   }, null, 2));
 
   if (!confirmSend) {
@@ -226,10 +232,15 @@ async function main() {
     return;
   }
 
+  const MAX_FEE_DROPS = 10_000;
   const client = new Client(xrplRpcUrl);
   await client.connect();
   try {
     const prepared = await client.autofill(tx);
+    const fee = parseInt((prepared as any).Fee ?? "0", 10);
+    if (fee > MAX_FEE_DROPS) {
+      throw new Error(`Autofill fee ${fee} drops exceeds safety cap of ${MAX_FEE_DROPS} drops`);
+    }
     const signed = xrplWallet.sign(prepared);
     const result = await client.submitAndWait(signed.tx_blob);
     console.log(JSON.stringify(result, null, 2));

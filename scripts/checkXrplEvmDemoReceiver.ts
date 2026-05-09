@@ -24,8 +24,20 @@ function req(name: string): string {
   return v.trim();
 }
 
+function sanitizeForLog(value: string): string {
+  // Strip newlines and control characters to prevent log injection via chain-sourced strings.
+  return value.replace(/[\r\n\t\x00-\x1f\x7f]/g, " ");
+}
+
 async function main() {
   const rpcUrl = req("XRPL_EVM_RPC_URL");
+
+  // Guard against SSRF: only allow HTTPS or WebSocket connections to prevent redirection to internal services.
+  const scheme = rpcUrl.split(":")[0].toLowerCase();
+  if (!["https", "wss"].includes(scheme)) {
+    throw new Error(`XRPL_EVM_RPC_URL must use https or wss (got: ${scheme})`);
+  }
+
   const receiverAddress = req("XRPL_EVM_DEMO_RECEIVER");
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -45,10 +57,10 @@ async function main() {
     console.log("=== Last GMP Message ===");
     console.log({
       commandId: msg.commandId,
-      sourceChain: msg.sourceChain,
-      sourceAddress: msg.sourceAddress,
-      sender: msg.sender,
-      message: msg.message,
+      sourceChain: sanitizeForLog(msg.sourceChain),
+      sourceAddress: sanitizeForLog(msg.sourceAddress),
+      sender: sanitizeForLog(msg.sender),
+      message: sanitizeForLog(msg.message),
       xrpDrops: msg.xrpDrops.toString(),
       receivedAt: new Date(Number(msg.receivedAt) * 1000).toISOString()
     });
@@ -63,12 +75,12 @@ async function main() {
     console.log("=== Last ITS Transfer ===");
     console.log({
       commandId: transfer.commandId,
-      sourceChain: transfer.sourceChain,
+      sourceChain: sanitizeForLog(transfer.sourceChain),
       tokenId: transfer.tokenId,
       token: transfer.token,
       amount: transfer.amount.toString(),
-      sender: transfer.sender,
-      message: transfer.message,
+      sender: sanitizeForLog(transfer.sender),
+      message: sanitizeForLog(transfer.message),
       xrpDrops: transfer.xrpDrops.toString(),
       receivedAt: new Date(Number(transfer.receivedAt) * 1000).toISOString()
     });

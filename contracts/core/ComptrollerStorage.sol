@@ -53,6 +53,7 @@ contract ComptrollerV1Storage is UnitrollerAdminStorage {
      */
     mapping(address => CToken[]) public accountAssets;
 
+    uint256[44] private __gap;
 }
 
 contract ComptrollerV2Storage is ComptrollerV1Storage {
@@ -91,6 +92,8 @@ contract ComptrollerV2Storage is ComptrollerV1Storage {
     bool public seizeGuardianPaused;
     mapping(address => bool) public mintGuardianPaused;
     mapping(address => bool) public borrowGuardianPaused;
+
+    uint256[43] private __gap;
 }
 
 contract ComptrollerV3Storage is ComptrollerV2Storage {
@@ -125,6 +128,8 @@ contract ComptrollerV3Storage is ComptrollerV2Storage {
 
     /// @notice Legacy reward amount accrued but not transferred to each user.
     mapping(address => uint) public rewardAccrued;
+
+    uint256[42] private __gap;
 }
 
 contract ComptrollerV4Storage is ComptrollerV3Storage {
@@ -133,6 +138,8 @@ contract ComptrollerV4Storage is ComptrollerV3Storage {
 
     // @notice Borrow caps enforced by borrowAllowed for each cToken address. Defaults to zero which corresponds to unlimited borrowing.
     mapping(address => uint) public borrowCaps;
+
+    uint256[48] private __gap;
 }
 
 contract ComptrollerV5Storage is ComptrollerV4Storage {
@@ -141,6 +148,8 @@ contract ComptrollerV5Storage is ComptrollerV4Storage {
 
     /// @notice Last block at which contributor legacy rewards were allocated.
     mapping(address => uint) public lastContributorBlock;
+
+    uint256[48] private __gap;
 }
 
 contract ComptrollerV6Storage is ComptrollerV5Storage {
@@ -149,6 +158,8 @@ contract ComptrollerV6Storage is ComptrollerV5Storage {
 
     /// @notice The rate at which legacy rewards are distributed to the corresponding supply market per block.
     mapping(address => uint) public rewardSupplySpeeds;
+
+    uint256[48] private __gap;
 }
 
 contract ComptrollerV7Storage is ComptrollerV6Storage {

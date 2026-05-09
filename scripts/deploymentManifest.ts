@@ -26,12 +26,14 @@ function stableStringify(value: unknown): string {
   return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`).join(",")}}`;
 }
 
-export function deploymentDigest(record: DeploymentSummary): string {
-  return ethers.keccak256(ethers.toUtf8Bytes(stableStringify(record)));
+export function deploymentDigest(recordPath: string, record: DeploymentSummary): string {
+  // Include recordPath in the digest to prevent an attacker from substituting a different
+  // record file while reusing a valid signature obtained for another path.
+  return ethers.keccak256(ethers.toUtf8Bytes(stableStringify({ recordPath, record })));
 }
 
 export function buildSignedDeploymentManifest(recordPath: string, record: DeploymentSummary, signer: ethers.Wallet): SignedDeploymentManifest {
-  const digest = deploymentDigest(record);
+  const digest = deploymentDigest(recordPath, record);
   const signature = signer.signMessageSync(ethers.getBytes(digest));
 
   return {
@@ -61,7 +63,7 @@ export function writeSignedDeploymentManifest(manifestPath: string, manifest: Si
 
 export function verifySignedDeploymentManifest(recordPath: string, manifest: SignedDeploymentManifest) {
   const record = resolveDeploymentRecord(recordPath);
-  const digest = deploymentDigest(record);
+  const digest = deploymentDigest(recordPath, record);
   if (digest !== manifest.digest) {
     throw new Error(`Manifest digest mismatch: expected ${digest}, got ${manifest.digest}`);
   }

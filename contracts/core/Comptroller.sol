@@ -149,6 +149,11 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             return Error.NO_ERROR;
         }
 
+        // Enforce the per-account asset cap when maxAssets is configured.
+        if (maxAssets > 0 && accountAssets[borrower].length >= maxAssets) {
+            return Error.TOO_MANY_ASSETS;
+        }
+
         // survived the gauntlet, add to list
         // NOTE: we store these somewhat redundantly as a significant optimization
         //  this avoids having to iterate through the list for the most common use cases
@@ -827,6 +832,8 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
             return fail(Error.UNAUTHORIZED, FailureInfo.SET_PRICE_ORACLE_OWNER_CHECK);
         }
 
+        require(address(newOracle) != address(0), "oracle=0");
+
         // Track the old oracle for the comptroller
         PriceOracle oldOracle = oracle;
 
@@ -848,6 +855,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
     function _setCloseFactor(uint newCloseFactorMantissa) external returns (uint) {
         // Check caller is admin
     	require(msg.sender == admin, "only admin can set close factor");
+
+        require(newCloseFactorMantissa >= closeFactorMinMantissa, "close factor too small");
+        require(newCloseFactorMantissa <= closeFactorMaxMantissa, "close factor too large");
 
         uint oldCloseFactorMantissa = closeFactorMantissa;
         closeFactorMantissa = newCloseFactorMantissa;

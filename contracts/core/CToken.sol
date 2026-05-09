@@ -304,7 +304,11 @@ abstract contract CToken is CTokenInterface, ExponentialNoError, TokenErrorRepor
              *  exchangeRate = (totalCash + totalBorrows - totalReserves) / totalSupply
              */
             uint totalCash = getCashPrior();
-            uint cashPlusBorrowsMinusReserves = totalCash + totalBorrows - totalReserves;
+            // Clamp to 0 when reserves exceed assets (e.g., donated reserves or accounting edge-case).
+            // Without this guard a Solidity 0.8 underflow would revert and permanently freeze the market.
+            uint cashPlusBorrowsMinusReserves = (totalCash + totalBorrows > totalReserves)
+                ? totalCash + totalBorrows - totalReserves
+                : 0;
             uint exchangeRate = cashPlusBorrowsMinusReserves * expScale / _totalSupply;
 
             return exchangeRate;
