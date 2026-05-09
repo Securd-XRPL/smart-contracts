@@ -490,7 +490,8 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
     }
 
     function _egress(address proxy, XRPLSecurdTypes.IntentEnvelope memory envelope) internal {
-        if (envelope.destinationAddress.length == 0) revert InvalidDestinationAddress();
+        if (envelope.destinationAddress.length == 0 || envelope.destinationAddress.length > 256)
+            revert InvalidDestinationAddress();
 
         MarketConfig memory cfg = _requireMarket(envelope.market);
         bytes memory pullData = abi.encodeWithSelector(IERC20.transfer.selector, address(this), envelope.amount);

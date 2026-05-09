@@ -46,8 +46,17 @@ export function buildSignedDeploymentManifest(recordPath: string, record: Deploy
   };
 }
 
+function confinedManifestPath(rawPath: string): string {
+  const resolved = path.resolve(rawPath);
+  const cwd = process.cwd();
+  if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+    throw new Error(`Manifest path must be within the working directory: ${rawPath}`);
+  }
+  return resolved;
+}
+
 export function loadSignedDeploymentManifest(manifestPath: string): SignedDeploymentManifest {
-  const resolved = path.resolve(manifestPath);
+  const resolved = confinedManifestPath(manifestPath);
   return JSON.parse(fs.readFileSync(resolved, "utf8")) as SignedDeploymentManifest;
 }
 
@@ -56,7 +65,7 @@ export function resolveDeploymentRecord(recordPath: string): DeploymentSummary {
 }
 
 export function writeSignedDeploymentManifest(manifestPath: string, manifest: SignedDeploymentManifest) {
-  const resolved = path.resolve(manifestPath);
+  const resolved = confinedManifestPath(manifestPath);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
   fs.writeFileSync(resolved, `${JSON.stringify(manifest, null, 2)}\n`);
 }

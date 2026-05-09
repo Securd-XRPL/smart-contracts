@@ -134,6 +134,13 @@ contract SecurdCollateralFactorTimelock is Ownable {
         (bool ok, bytes memory ret) = target.call{value: value}(data);
         if (!ok) revert ExecutionFailed(actionId, ret);
 
+        // Compound-style admin functions return a uint256 error code instead of reverting.
+        // A non-zero return value signals failure even when the call itself succeeded.
+        if (ret.length == 32) {
+            uint256 errCode = abi.decode(ret, (uint256));
+            if (errCode != 0) revert ExecutionFailed(actionId, ret);
+        }
+
         emit ActionExecuted(actionId, target, data);
     }
 

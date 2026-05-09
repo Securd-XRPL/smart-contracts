@@ -19,6 +19,7 @@ contract XRPLUserProxy {
     /// @param controller_ Bridge adapter allowed to execute calls through the proxy.
     /// @param xrplAccount_ Canonical XRPL account identifier represented by this proxy.
     constructor(address controller_, bytes32 xrplAccount_) {
+        require(controller_ != address(0), "XRPLUserProxy: controller=0");
         controller = controller_;
         xrplAccount = xrplAccount_;
     }

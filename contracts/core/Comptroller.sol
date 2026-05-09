@@ -1221,6 +1221,10 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         uint32 blockNumber = safe32(getBlockNumber(), "block number exceeds 32 bits");
         uint deltaBlocks = sub_(uint(blockNumber), uint(borrowState.block));
         if (deltaBlocks > 0 && borrowSpeed > 0) {
+            if (marketBorrowIndex.mantissa == 0) {
+                borrowState.block = blockNumber;
+                return;
+            }
             uint borrowAmount = div_(CToken(cToken).totalBorrows(), marketBorrowIndex);
             uint rewardAccruedDelta = mul_(deltaBlocks, borrowSpeed);
             Double memory ratio = borrowAmount > 0 ? fraction(rewardAccruedDelta, borrowAmount) : Double({mantissa: 0});
@@ -1297,6 +1301,7 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         // Calculate change in the cumulative sum of rewards per borrowed unit accrued.
         Double memory deltaIndex = Double({mantissa: sub_(borrowIndex, borrowerIndex)});
 
+        if (marketBorrowIndex.mantissa == 0) return;
         uint borrowerAmount = div_(CToken(cToken).borrowBalanceStored(borrower), marketBorrowIndex);
 
         // Calculate accrued rewards: cTokenAmount * accruedPerBorrowedUnit.

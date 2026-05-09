@@ -10,6 +10,7 @@ function requiredEnv(name: string): string {
 
 async function main() {
   const owner = requiredEnv("KEEPER_OWNER");
+  if (!ethers.isAddress(owner)) throw new Error(`KEEPER_OWNER is not a valid address: ${owner}`);
   const [deployer] = await ethers.getSigners();
 
   console.log(`Deployer: ${deployer.address}`);
