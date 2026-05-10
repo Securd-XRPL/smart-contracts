@@ -1,0 +1,26 @@
+{
+  "owner": "0x243CD17C18052dD49B803dB5be3c2907DA6ff783",
+  "deployer": "0x243CD17C18052dD49B803dB5be3c2907DA6ff783",
+  "comptrollerAdmin": "0xAFD847d1eE5E5c8967eA16823CbA19f7bA19B099",
+  "comptrollerPendingAdmin": "0x0000000000000000000000000000000000000000",
+  "comptrollerExpectedAdmin": "0x243CD17C18052dD49B803dB5be3c2907DA6ff783",
+  "unitroller": "0x26Cf3D5c8832D77eadF0a76d36E33a92200EE883",
+  "comptrollerImplementation": "0x8B18A48e6B833d08a512E468107d1f56154bbd49",
+  "comptrollerProxy": "0x26Cf3D5c8832D77eadF0a76d36E33a92200EE883",
+  "collateralFactorTimelock": "0xAFD847d1eE5E5c8967eA16823CbA19f7bA19B099",
+  "oracle": "0x3e4B7874A46815F49eBebE598213ecEda260ca04",
+  "interestRateModel": "0x64ccEa09e73171EE78eb382EE89fc72150e812ab",
+  "cErc20DelegateImplementation": "0x1b9afD0C2CFaD9B167CC7B2f5B643D46becB76AD",
+  "liquidationKeeper": "0x870A7fCF5591a20Ff64868bF9aBa740d0318FdCD",
+  "xrplUserProxyFactory": "0x04a8A4b4C26a81764Bcc7610072aA8A22e165559",
+  "xrplBridgeAdapter": "0xf1CBD0f07580ff9A0961cB97758363f42D95df20",
+  "markets": [
+    {
+      "underlying": "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+      "cToken": "0xcD881baC550Ae161942c93CF393822E97c745811",
+      "cTokenSymbol": "sXRP",
+      "bridgeListed": true,
+      "oracleMode": "FALLBACK"
+    }
+  ]
+}

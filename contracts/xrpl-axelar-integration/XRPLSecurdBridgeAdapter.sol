@@ -235,8 +235,6 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         external
         whenNotPaused
     {
-        if (msg.sender != address(gateway)) revert NotGateway();
-
         bytes32 gatewayPayloadHash = keccak256(payload);
         if (!gateway.validateContractCall(commandId, sourceChain, sourceAddress, gatewayPayloadHash)) {
             revert NotApprovedByGateway();
