@@ -23,7 +23,7 @@ All addresses, keys, and setup parameters for the Securd lending stack on XRPL E
 |------|---------|
 | Deployer / owner / intent signer | `0x243CD17C18052dD49B803dB5be3c2907DA6ff783` |
 | XRPL Ledger wallet | `r4obbPExFxVcmqUBr5jepsdtDLX3htdq48` |
-| XRPL EVM user proxy (deterministic via CREATE2) | `0x02b79e2c6D91B384ddD1767F8C4321D2ACBBEFE8` |
+| XRPL EVM user proxy (deterministic via CREATE2) | `0x4F654Fb71f7176fB98A8DB3A9b974201195028ec` |
 
 Private keys live only in `.env` (gitignored).
 
@@ -43,15 +43,15 @@ Private keys live only in `.env` (gitignored).
 
 | Contract | Address |
 |----------|---------|
-| Unitroller (Comptroller proxy) | `0x26Cf3D5c8832D77eadF0a76d36E33a92200EE883` |
-| Comptroller implementation | `0x8B18A48e6B833d08a512E468107d1f56154bbd49` |
-| CollateralFactorTimelock | `0xAFD847d1eE5E5c8967eA16823CbA19f7bA19B099` |
-| Oracle | `0x3e4B7874A46815F49eBebE598213ecEda260ca04` |
-| Interest Rate Model | `0x64ccEa09e73171EE78eb382EE89fc72150e812ab` |
-| cErc20Delegate (implementation) | `0x1b9afD0C2CFaD9B167CC7B2f5B643D46becB76AD` |
-| Liquidation Keeper | `0x870A7fCF5591a20Ff64868bF9aBa740d0318FdCD` |
-| XRPLUserProxyFactory | `0x04a8A4b4C26a81764Bcc7610072aA8A22e165559` |
-| XRPLSecurdBridgeAdapter | `0xf1CBD0f07580ff9A0961cB97758363f42D95df20` |
+| Unitroller (Comptroller proxy) | `0xbD758A39e6e0C601c35655394eCbb88443Ba37A6` |
+| Comptroller implementation | `0x19b770AaF7F27a3B773e43b4aF61f996C4B6604a` |
+| CollateralFactorTimelock | `0x6AD5107E1bA2439B75fCE222Bd91D214Be34E2ca` |
+| Oracle | `0xC16213F10911767a1011fC42EA253d93130079b4` |
+| Interest Rate Model | `0x2127469237fDE5C730191F2B7B2eB4fa3355aA5C` |
+| cErc20Delegate (implementation) | `0x1B59B2F946D0061937305633621BDfF18d9aB98a` |
+| Liquidation Keeper | `0xe3db6Ada7e4b4d072EA00482d19FC10f75213558` |
+| XRPLUserProxyFactory | `0x832774Fa7E8E3B3dcd57208cE6C6bD4648aeF2c7` |
+| XRPLSecurdBridgeAdapter | `0xb457321CF05bC4ACe87d15B5400A5dD944bC444f` |
 
 ### sXRP Market
 
@@ -59,7 +59,7 @@ Private keys live only in `.env` (gitignored).
 |-----------|-------|
 | cToken symbol | `sXRP` |
 | cToken name | Securd XRP |
-| cToken address | `0xcD881baC550Ae161942c93CF393822E97c745811` |
+| cToken address | `0xdC23077B9E2d02Dee0f1F4784D2526e4A20f3869` |
 | Underlying | `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` (native XRP) |
 | Collateral factor | 75% (`750000000000000000`) |
 | Oracle mode | FALLBACK |
