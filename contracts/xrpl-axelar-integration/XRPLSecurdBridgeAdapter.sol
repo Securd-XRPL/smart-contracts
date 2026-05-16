@@ -27,7 +27,6 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
     error InvalidGateway();
     error InvalidIts();
     error InvalidProxyFactory();
-    error NotGateway();
     error NotInterchainTokenService();
     error NotApprovedByGateway();
     error UntrustedSource(bytes32 sourceId);
@@ -509,9 +508,9 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             comptrollerAddr,
             abi.encodeWithSelector(IComptroller.enterMarkets.selector, markets)
         );
-        // enterMarkets returns uint256[] — ABI-encoded minimum is 64 bytes (offset + length).
-        // A 1-element array is 96 bytes. Decode only when the data is long enough to be valid.
-        if (out.length >= 64) {
+        // enterMarkets returns uint256[] — a 1-element array encodes to exactly 96 bytes
+        // (32-byte offset + 32-byte length + 32-byte value). Decode only when data is long enough.
+        if (out.length >= 96) {
             uint256[] memory codes = abi.decode(out, (uint256[]));
             if (codes.length > 0 && codes[0] != 0) revert SecurdCallFailed(uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET), codes[0]);
         }
@@ -546,6 +545,10 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             bytes(""),
             egressGasValue
         );
+
+        // Reset approval unconditionally — mirrors the proxy→market pattern; guards against
+        // stale allowance if ITS consumed less than the approved amount for any reason.
+        _safeApprove(envelope.underlying, address(interchainTokenService), 0);
 
         emit EgressInitiated(
             envelope.intentId,

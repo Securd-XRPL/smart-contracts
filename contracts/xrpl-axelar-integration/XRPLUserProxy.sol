@@ -62,6 +62,7 @@ contract XRPLUserProxy {
     /// @param to Recipient of the native value.
     /// @param amount Amount in wei to transfer.
     function sweepNative(address payable to, uint256 amount) external onlyController {
+        if (to == address(0)) revert CallFailed("to=0");
         (bool ok,) = to.call{value: amount}("");
         if (!ok) revert CallFailed("");
     }

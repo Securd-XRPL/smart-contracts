@@ -103,6 +103,7 @@ contract SecurdMedianOracleReporter is Ownable, Pausable {
     function setAssetConfig(address asset, uint64 roundDuration, uint8 minSubmissions) external onlyOwner {
         if (asset == address(0)) revert InvalidAsset();
         if (roundDuration == 0 || minSubmissions == 0) revert InvalidSubmission();
+        if (minSubmissions > MAX_SUBMISSIONS_PER_ROUND) revert InvalidSubmission();
 
         assetConfig[asset] = AssetConfig({roundDuration: roundDuration, minSubmissions: minSubmissions});
         emit AssetConfigSet(asset, roundDuration, minSubmissions);
