@@ -23,7 +23,7 @@ All addresses, keys, and setup parameters for the Securd lending stack on XRPL E
 |------|---------|
 | Deployer / owner / intent signer | `0x243CD17C18052dD49B803dB5be3c2907DA6ff783` |
 | XRPL Ledger wallet | `r4obbPExFxVcmqUBr5jepsdtDLX3htdq48` |
-| XRPL EVM user proxy (deterministic via CREATE2) | `0x4F654Fb71f7176fB98A8DB3A9b974201195028ec` |
+| XRPL EVM user proxy (deterministic via CREATE2) | `0x4409B6F95DbE77398cE9D4B7FA1E146bfE5B5e86` |
 
 Private keys live only in `.env` (gitignored).
 
@@ -43,15 +43,15 @@ Private keys live only in `.env` (gitignored).
 
 | Contract | Address |
 |----------|---------|
-| Unitroller (Comptroller proxy) | `0xbD758A39e6e0C601c35655394eCbb88443Ba37A6` |
-| Comptroller implementation | `0x19b770AaF7F27a3B773e43b4aF61f996C4B6604a` |
-| CollateralFactorTimelock | `0x6AD5107E1bA2439B75fCE222Bd91D214Be34E2ca` |
-| Oracle | `0xC16213F10911767a1011fC42EA253d93130079b4` |
-| Interest Rate Model | `0x2127469237fDE5C730191F2B7B2eB4fa3355aA5C` |
-| cErc20Delegate (implementation) | `0x1B59B2F946D0061937305633621BDfF18d9aB98a` |
-| Liquidation Keeper | `0xe3db6Ada7e4b4d072EA00482d19FC10f75213558` |
-| XRPLUserProxyFactory | `0x832774Fa7E8E3B3dcd57208cE6C6bD4648aeF2c7` |
-| XRPLSecurdBridgeAdapter | `0xb457321CF05bC4ACe87d15B5400A5dD944bC444f` |
+| Unitroller (Comptroller proxy) | `0x46d364257112230022E72b086Df85a6b0f8D3F86` |
+| Comptroller implementation | `0x19b8936999af4858357Cfe9CCA80B72711ad2714` |
+| CollateralFactorTimelock | `0xe752dfF3f9F3Dbfa48764B076543270F19a75E90` |
+| Oracle | `0x517475AFaFfaE71491d9Bad598E07AAFD050Ca80` |
+| Interest Rate Model | `0xDd31C1db90AB0b094d73E0b4c8dae2296a7d8C0d` |
+| cErc20Delegate (implementation) | `0xC803D3D50465a8deC7F0A21034900efcE650a7b8` |
+| Liquidation Keeper | `0xF87Bda7207B629789abaaCcef366Ba853BA11399` |
+| XRPLUserProxyFactory | `0xB7f3ECe856063F48BC3bcC7A381aE875841663aA` |
+| XRPLSecurdBridgeAdapter | `0x7AC8Df85448037c6fE1eD5732c6ca71060069237` |
 
 ### sXRP Market
 
@@ -59,7 +59,7 @@ Private keys live only in `.env` (gitignored).
 |-----------|-------|
 | cToken symbol | `sXRP` |
 | cToken name | Securd XRP |
-| cToken address | `0xdC23077B9E2d02Dee0f1F4784D2526e4A20f3869` |
+| cToken address | `0x6ec503Ad093B8b8B74AD9168Acb3f547C79f0318` |
 | Underlying | `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` (native XRP) |
 | Collateral factor | 75% (`750000000000000000`) |
 | Oracle mode | FALLBACK |
@@ -75,7 +75,7 @@ Private keys live only in `.env` (gitignored).
 |-----------|-------|
 | Egress gas value | `1000000000000000000` (1 XRP in wei) |
 | Intent signer for XRPL wallet | `0x243CD17C18052dD49B803dB5be3c2907DA6ff783` |
-| Adapter native XRP balance (funded) | 10 XRP (2 XRP consumed by WITHDRAW + BORROW egress → 8 XRP remaining) |
+| Adapter native XRP balance (funded) | 5 XRP (2 XRP consumed by WITHDRAW + BORROW egress → 3 XRP remaining) |
 
 ---
 
@@ -141,4 +141,4 @@ All scripts require `XRPL_CONFIRM_SEND=true` to submit on-chain (default is dry-
 
 Full JSON deployment record: [deployments/xrpl-evm-testnet.json](../deployments/xrpl-evm-testnet.json)
 
-End-to-end testnet transaction log: [docs/xrpl-lending-testnet-transactions-v2.md](xrpl-lending-testnet-transactions-v2.md)
+End-to-end testnet transaction log (v4 redeployment): [docs/xrpl-lending-testnet-transactions-v2.md](xrpl-lending-testnet-transactions-v2.md)
