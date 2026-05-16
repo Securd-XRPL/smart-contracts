@@ -1288,6 +1288,9 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
         uint borrowIndex = borrowState.index;
         uint borrowerIndex = rewardBorrowerIndex[cToken][borrower];
 
+        // Guard against divide-by-zero before touching any state or computing rewards.
+        if (marketBorrowIndex.mantissa == 0) return;
+
         // Update the borrower index to the current index before applying accrued rewards.
         rewardBorrowerIndex[cToken][borrower] = borrowIndex;
 
@@ -1300,8 +1303,6 @@ contract Comptroller is ComptrollerV7Storage, ComptrollerInterface, ComptrollerE
 
         // Calculate change in the cumulative sum of rewards per borrowed unit accrued.
         Double memory deltaIndex = Double({mantissa: sub_(borrowIndex, borrowerIndex)});
-
-        if (marketBorrowIndex.mantissa == 0) return;
         uint borrowerAmount = div_(CToken(cToken).borrowBalanceStored(borrower), marketBorrowIndex);
 
         // Calculate accrued rewards: cTokenAmount * accruedPerBorrowedUnit.
