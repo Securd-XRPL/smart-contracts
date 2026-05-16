@@ -458,14 +458,6 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             assembly { revert(add(mintOut, 0x20), mload(mintOut)) }
         }
         _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.SUPPLY), mintOut);
-
-        // Enter the supplied market so the cToken balance counts as collateral in liquidity checks.
-        // Without this call, cross-asset borrowing always fails with INSUFFICIENT_LIQUIDITY because
-        // Compound's getHypotheticalAccountLiquidityInternal only iterates accountAssets[proxy].
-        address comptrollerAddr = ICTokenComptroller(market).comptroller();
-        address[] memory marketsToEnter = new address[](1);
-        marketsToEnter[0] = market;
-        _proxyCall(proxy, comptrollerAddr, abi.encodeWithSelector(IComptroller.enterMarkets.selector, marketsToEnter));
     }
 
     function _repay(address proxy, address market, address underlying, uint256 amount) internal {
