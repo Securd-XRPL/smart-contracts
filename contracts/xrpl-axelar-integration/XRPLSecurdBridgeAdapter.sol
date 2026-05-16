@@ -509,8 +509,9 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             comptrollerAddr,
             abi.encodeWithSelector(IComptroller.enterMarkets.selector, markets)
         );
-        // enterMarkets returns uint256[] — check first entry is 0 (success).
-        if (out.length >= 32) {
+        // enterMarkets returns uint256[] — ABI-encoded minimum is 64 bytes (offset + length).
+        // A 1-element array is 96 bytes. Decode only when the data is long enough to be valid.
+        if (out.length >= 64) {
             uint256[] memory codes = abi.decode(out, (uint256[]));
             if (codes.length > 0 && codes[0] != 0) revert SecurdCallFailed(uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET), codes[0]);
         }
