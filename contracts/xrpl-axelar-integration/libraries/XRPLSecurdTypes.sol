@@ -3,10 +3,12 @@ pragma solidity 0.8.24;
 
 library XRPLSecurdTypes {
     enum ActionType {
-        SUPPLY,
-        BORROW,
-        REPAY,
-        WITHDRAW
+        SUPPLY,       // 0 — ITS interchain_transfer inbound, mint cTokens
+        BORROW,       // 1 — GMP call_contract, borrow + ITS egress
+        REPAY,        // 2 — ITS interchain_transfer inbound, repay debt
+        WITHDRAW,     // 3 — GMP call_contract, redeem + ITS egress
+        ENTER_MARKET, // 4 — GMP call_contract, enter collateral market (no egress)
+        EXIT_MARKET   // 5 — GMP call_contract, exit collateral market (no egress)
     }
 
     struct IntentEnvelope {

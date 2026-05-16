@@ -16,6 +16,11 @@ interface ICTokenComptroller {
     function comptroller() external view returns (address);
 }
 
+interface IComptroller {
+    function enterMarkets(address[] calldata markets) external returns (uint256[] memory);
+    function exitMarket(address market) external returns (uint256);
+}
+
 /// @notice Securd V2 cross-chain adapter for XRPL Ledger <-> XRPL EVM through Axelar.
 /// @dev Keeps Securd core unchanged by executing only public cToken methods through per-user proxies.
 contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
@@ -249,12 +254,11 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         _validateEnvelopeBase(envelope);
         _validateIntentSignature(envelope.xrplAccount, payloadHash, signedIntent.signature);
 
-        if (
-            envelope.actionType != uint8(XRPLSecurdTypes.ActionType.BORROW)
-                && envelope.actionType != uint8(XRPLSecurdTypes.ActionType.WITHDRAW)
-        ) {
-            revert UnsupportedIngressPath(envelope.actionType, false);
-        }
+        bool isGmpAction = envelope.actionType == uint8(XRPLSecurdTypes.ActionType.BORROW)
+            || envelope.actionType == uint8(XRPLSecurdTypes.ActionType.WITHDRAW)
+            || envelope.actionType == uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET)
+            || envelope.actionType == uint8(XRPLSecurdTypes.ActionType.EXIT_MARKET);
+        if (!isGmpAction) revert UnsupportedIngressPath(envelope.actionType, false);
 
         if (!_lockIntent(envelope.intentId, payloadHash)) {
             emit IntentDuplicateIgnored(envelope.intentId, payloadHash);
@@ -264,15 +268,22 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         _validateNonce(envelope.xrplAccount, envelope.nonce);
         address proxy = _prepareExecution(envelope);
 
+        bool hasEgress;
         if (envelope.actionType == uint8(XRPLSecurdTypes.ActionType.BORROW)) {
             _borrow(proxy, envelope.market, envelope.amount);
-        } else {
+            hasEgress = true;
+        } else if (envelope.actionType == uint8(XRPLSecurdTypes.ActionType.WITHDRAW)) {
             _withdraw(proxy, envelope.market, envelope.amount);
+            hasEgress = true;
+        } else if (envelope.actionType == uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET)) {
+            _enterMarket(proxy, envelope.market);
+        } else {
+            _exitMarket(proxy, envelope.market);
         }
 
         // Consume nonce before egress so a re-entrant ITS callback cannot replay the same intent.
         _consumeNonce(envelope.xrplAccount);
-        _egress(proxy, envelope);
+        if (hasEgress) _egress(proxy, envelope);
 
         emit IntentExecuted(
             envelope.intentId,
@@ -359,10 +370,12 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         if (envelope.xrplAccount == bytes32(0)) revert InvalidXrplAccount();
         if (envelope.market == address(0)) revert InvalidMarket();
         if (envelope.underlying == address(0)) revert InvalidUnderlying();
-        if (envelope.amount == 0) revert InvalidAmount();
-        if (envelope.actionType > uint8(XRPLSecurdTypes.ActionType.WITHDRAW)) {
+        if (envelope.actionType > uint8(XRPLSecurdTypes.ActionType.EXIT_MARKET)) {
             revert InvalidActionType(envelope.actionType);
         }
+        bool amountRequired = envelope.actionType != uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET)
+            && envelope.actionType != uint8(XRPLSecurdTypes.ActionType.EXIT_MARKET);
+        if (amountRequired && envelope.amount == 0) revert InvalidAmount();
         if (envelope.deadline != 0 && block.timestamp > envelope.deadline) {
             revert DeadlineExpired(envelope.deadline, block.timestamp);
         }
@@ -453,7 +466,7 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         address comptrollerAddr = ICTokenComptroller(market).comptroller();
         address[] memory marketsToEnter = new address[](1);
         marketsToEnter[0] = market;
-        _proxyCall(proxy, comptrollerAddr, abi.encodeWithSignature("enterMarkets(address[])", marketsToEnter));
+        _proxyCall(proxy, comptrollerAddr, abi.encodeWithSelector(IComptroller.enterMarkets.selector, marketsToEnter));
     }
 
     function _repay(address proxy, address market, address underlying, uint256 amount) internal {
@@ -485,6 +498,32 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         bytes memory out =
             _proxyCall(proxy, market, abi.encodeWithSelector(CErc20Interface.redeemUnderlying.selector, amount));
         _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.WITHDRAW), out);
+    }
+
+    function _enterMarket(address proxy, address market) internal {
+        address comptrollerAddr = ICTokenComptroller(market).comptroller();
+        address[] memory markets = new address[](1);
+        markets[0] = market;
+        bytes memory out = _proxyCall(
+            proxy,
+            comptrollerAddr,
+            abi.encodeWithSelector(IComptroller.enterMarkets.selector, markets)
+        );
+        // enterMarkets returns uint256[] — check first entry is 0 (success).
+        if (out.length >= 32) {
+            uint256[] memory codes = abi.decode(out, (uint256[]));
+            if (codes.length > 0 && codes[0] != 0) revert SecurdCallFailed(uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET), codes[0]);
+        }
+    }
+
+    function _exitMarket(address proxy, address market) internal {
+        address comptrollerAddr = ICTokenComptroller(market).comptroller();
+        bytes memory out = _proxyCall(
+            proxy,
+            comptrollerAddr,
+            abi.encodeWithSelector(IComptroller.exitMarket.selector, market)
+        );
+        _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.EXIT_MARKET), out);
     }
 
     function _egress(address proxy, XRPLSecurdTypes.IntentEnvelope memory envelope) internal {
