@@ -20,16 +20,17 @@
       "cToken": "0x6ec503Ad093B8b8B74AD9168Acb3f547C79f0318",
       "cTokenSymbol": "sXRP",
       "bridgeListed": true,
-      "oracleMode": "FALLBACK"
+      "oracleMode": "BAND",
+      "interestRateModel": "0xab40Ba69e529b3f232968fb6cf4EF964a9251758"
     },
     {
       "underlying": "0x075cEB633c10B74Ed678D1623746bddff6b98517",
       "cToken": "0x2F874D87E685EC28be749B781dc99119F27CF0be",
       "cTokenSymbol": "sSTST",
       "bridgeListed": true,
-      "oracleMode": "FALLBACK"
+      "oracleMode": "BAND",
+      "interestRateModel": "0x7C6d2A2F6246715126fcA0E01163D398dC6B2A85"
     }
   ],
-  "pendingCFActionId": "0x32fac699dc2121b969dbca24cda938605a1126a04476ca213797bdef71c88741",
-  "pendingCFEta": 1779156535
+  "bandStdReference": "0x8c064bCf7C0DA3B3b090BAbFE8f3323534D84d68"
 }
