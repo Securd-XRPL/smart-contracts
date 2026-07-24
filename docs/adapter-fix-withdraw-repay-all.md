@@ -1,6 +1,6 @@
 # Adapter Fix — "Repay All" and "Withdraw All" Sentinels
 
-**Status:** Required — blocks full position exit for all users  
+**Status:** Implemented (2026-07-24) — see [Implementation Notes](#implementation-notes-2026-07-24) for how the shipped fix differs from the original proposal below.  
 **Affected contract:** `contracts/xrpl-axelar-integration/XRPLSecurdBridgeAdapter.sol`  
 **Related audit:** [user-audit-rPpamGt.md](user-audit-rPpamGt.md)
 
@@ -243,3 +243,75 @@ For the current testnet deployment with one active user:
 | WITHDRAW dispatch | Patch `envelope.amount` with actual redeemed amount before `_egress()` | Same |
 | Dapp client | Encode sentinel values and display estimated amounts to user | N/A |
 | Adapter deployment | Wrap in UUPS proxy to allow future upgrades without losing user data | N/A |
+
+---
+
+## Implementation Notes (2026-07-24)
+
+The shipped fix keeps the two sentinels distinct, matching `REPAY_ALL`/`WITHDRAW_ALL` as already
+named in [xrpl-evm-sdk-specification.md](xrpl-evm-sdk-specification.md):
+
+- `envelope.amount == type(uint256).max` → repay all (`REPAY_ALL`)
+- `envelope.amount == 0` → withdraw all (`WITHDRAW_ALL`)
+
+For WITHDRAW, `_validateEnvelopeBase`'s existing `amount == 0 → InvalidAmount` guard is relaxed
+specifically for `ActionType.WITHDRAW` (0 was never a meaningful literal withdraw amount anyway, so
+reusing it as a sentinel doesn't create ambiguity). REPAY keeps the zero-amount guard as-is, since
+`REPAY_ALL` already uses a different, nonzero sentinel value.
+
+### Fix 1 (`_repay`) — deviation from the proposal above
+
+The codebase already has an `AmountMismatch` check in `executeWithInterchainToken` that requires
+`envelope.amount == amount` (the amount actually delivered by ITS in this call). The original
+proposal's `_repay` — funding the proxy with `borrowBalanceCurrent(proxy)` pulled from the
+**adapter's general token balance** — would either always trip that check, or (if bypassed
+naively) let a repay-all intent pull tokens the adapter is holding for unrelated purposes/users
+rather than the tokens genuinely bridged in that call.
+
+Shipped behavior instead:
+- `executeWithInterchainToken` skips the exact-match check only when `actionType == REPAY` and
+  `envelope.amount == type(uint256).max`. The real bridged amount is still passed through as
+  `amount` — untouched, no forgery of a different value.
+- `_repay(proxy, market, underlying, amount, repayAll)` funds the proxy with exactly `amount` (the
+  real bridged tokens), approves the market for `amount`, then calls `repayBorrow(type(uint256).max)`
+  when `repayAll` is set. Compound V2 internally caps the pull at the proxy's live borrow balance:
+  - If the live debt exceeds `amount`, `repayBorrow`'s internal `transferFrom` reverts (insufficient
+    balance/allowance) — the whole call reverts safely instead of reaching into unrelated funds.
+  - If the live debt is less than `amount` (client sent a buffer), the surplus remains as ordinary
+    ERC20 underlying dust in the user's own proxy — recoverable in principle (e.g. a future
+    proxy-sweep admin action), unlike the original bug's unredeemable cToken dust.
+- Client-side guidance is unchanged: query `borrowBalanceCurrent` before submitting and send that
+  amount (optionally with a small buffer, matching the dapp design spec's existing +0.5% max-repay
+  buffer) via ITS, with `amount = type(uint256).max` in the signed envelope.
+
+### Fix 2 (`_withdraw`) — same shape as proposed, with the sentinel change noted above
+
+- `envelope.amount == type(uint256).max` → `_withdraw` reads the proxy's cToken balance and calls
+  `redeem(cTokenBalance)`, returning the actual redeemed underlying (measured via before/after
+  balance diff on the proxy, which is also robust to fee-on-transfer underlying tokens).
+  `envelope.amount != type(uint256).max` → unchanged `redeemUnderlying(amount)` path.
+- The WITHDRAW dispatch site in `execute()` patches `envelope.amount` with the actual redeemed
+  amount before `_egress` runs, so the bridged-out amount (and the `IntentExecuted` event) reflect
+  the real redemption, not `0` or `type(uint256).max`.
+
+### Known residual limitation
+
+If a repay-all leaves underlying-token dust in the proxy (client overestimated the buffer), that
+dust is not automatically swept by a later withdraw-all — `_withdraw`'s before/after diff only
+captures the amount produced by the `redeem` call itself. This is a UX/completeness gap, not a
+fund-safety issue (the dust is the user's own token balance sitting in their own isolated proxy,
+not lost or accessible to anyone else). A follow-up could add an owner- or user-triggered
+`sweepProxyToken` admin path if this proves material in practice.
+
+### Test coverage
+
+`test/integration/bridgeAdapter.spec.ts` adds:
+- `supports repay-all via the type(uint256).max sentinel, clearing accrued-interest dust`
+- `rejects repay-all when the bridged token amount cannot cover the live debt`
+- `still enforces the exact amount match for ordinary (non-sentinel) repay`
+- `supports withdraw-all via the type(uint256).max sentinel, redeeming the full cToken balance`
+
+`contracts/mocks/MockCErc20Market.sol` was extended with `borrowBalanceOf`/`setBorrowBalance`,
+`balanceOf`/`setCTokenBalance`, `setExchangeRateMantissa`, and a `redeem()` implementation, plus a
+`repayBorrow` that mirrors `CToken.repayBorrowFresh`'s `type(uint256).max` capping behavior, so
+these paths can be exercised in isolation from the real `CToken`/`CErc20` contracts.

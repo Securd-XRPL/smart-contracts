@@ -272,7 +272,11 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
             _borrow(proxy, envelope.market, envelope.amount);
             hasEgress = true;
         } else if (envelope.actionType == uint8(XRPLSecurdTypes.ActionType.WITHDRAW)) {
-            _withdraw(proxy, envelope.market, envelope.amount);
+            // amount == 0 is the "withdraw all" sentinel: redeem the proxy's full cToken balance
+            // instead of a fixed underlying amount, then patch envelope.amount with the actual
+            // redeemed total so _egress bridges back the full position, not 0.
+            uint256 redeemed = _withdraw(proxy, envelope.market, envelope.underlying, envelope.amount);
+            if (envelope.amount == 0) envelope.amount = redeemed;
             hasEgress = true;
         } else if (envelope.actionType == uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET)) {
             _enterMarket(proxy, envelope.market);
@@ -329,7 +333,14 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         MarketConfig memory cfg = _requireMarket(envelope.market);
         if (cfg.underlying != token) revert TokenMismatch(cfg.underlying, token);
         if (cfg.tokenId != tokenId) revert TokenIdMismatch(cfg.tokenId, tokenId);
-        if (envelope.amount != amount) revert AmountMismatch(envelope.amount, amount);
+
+        // amount == type(uint256).max is the "repay all" sentinel: the client cannot know the exact
+        // debt (interest keeps accruing in-flight) so it cannot pre-commit to an exact ITS amount.
+        // Skip the exact-match check in that case only; _repay() below still bounds the actual
+        // repayment to the tokens genuinely bridged in this call.
+        bool repayAll = envelope.actionType == uint8(XRPLSecurdTypes.ActionType.REPAY)
+            && envelope.amount == type(uint256).max;
+        if (!repayAll && envelope.amount != amount) revert AmountMismatch(envelope.amount, amount);
 
         if (!_lockIntent(envelope.intentId, payloadHash)) {
             emit IntentDuplicateIgnored(envelope.intentId, payloadHash);
@@ -342,7 +353,7 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         if (envelope.actionType == uint8(XRPLSecurdTypes.ActionType.SUPPLY)) {
             _supply(proxy, envelope.market, envelope.underlying, amount);
         } else {
-            _repay(proxy, envelope.market, envelope.underlying, amount);
+            _repay(proxy, envelope.market, envelope.underlying, amount, repayAll);
         }
 
         _consumeNonce(envelope.xrplAccount);
@@ -372,8 +383,10 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         if (envelope.actionType > uint8(XRPLSecurdTypes.ActionType.EXIT_MARKET)) {
             revert InvalidActionType(envelope.actionType);
         }
+        // WITHDRAW is exempt: amount == 0 is the "withdraw all" sentinel handled in _withdraw().
         bool amountRequired = envelope.actionType != uint8(XRPLSecurdTypes.ActionType.ENTER_MARKET)
-            && envelope.actionType != uint8(XRPLSecurdTypes.ActionType.EXIT_MARKET);
+            && envelope.actionType != uint8(XRPLSecurdTypes.ActionType.EXIT_MARKET)
+            && envelope.actionType != uint8(XRPLSecurdTypes.ActionType.WITHDRAW);
         if (amountRequired && envelope.amount == 0) revert InvalidAmount();
         if (envelope.deadline != 0 && block.timestamp > envelope.deadline) {
             revert DeadlineExpired(envelope.deadline, block.timestamp);
@@ -460,15 +473,23 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.SUPPLY), mintOut);
     }
 
-    function _repay(address proxy, address market, address underlying, uint256 amount) internal {
+    function _repay(address proxy, address market, address underlying, uint256 amount, bool repayAll) internal {
         _safeTransfer(underlying, proxy, amount);
 
         _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, uint256(0)));
         _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, amount));
 
+        // repayAll passes type(uint256).max through to repayBorrow: Compound V2 caps the pull at the
+        // proxy's true current borrow balance internally, so any interest accrued between intent
+        // signing and execution is cleared too. The proxy was only funded with `amount` (the tokens
+        // actually bridged in this call, not a value fabricated from the adapter's general balance),
+        // so if the real debt exceeds `amount` the repayBorrow transferFrom safely reverts instead of
+        // reaching into unrelated funds; if the real debt is less, the surplus remains as ordinary
+        // underlying dust in the proxy rather than unredeemable cToken dust.
+        uint256 repayArg = repayAll ? type(uint256).max : amount;
         // Use raw (non-reverting) proxy call so we can always reset the allowance — even if repayBorrow reverts.
         (bool repayOk, bytes memory repayOut) =
-            _proxyCallRaw(proxy, market, abi.encodeWithSelector(CErc20Interface.repayBorrow.selector, amount));
+            _proxyCallRaw(proxy, market, abi.encodeWithSelector(CErc20Interface.repayBorrow.selector, repayArg));
 
         // Reset allowance unconditionally — mirrors the _supply pattern; prevents stale approval on failure paths.
         _proxyTokenCall(proxy, underlying, abi.encodeWithSelector(IERC20.approve.selector, market, uint256(0)));
@@ -485,9 +506,25 @@ contract XRPLSecurdBridgeAdapter is Ownable, Pausable {
         _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.BORROW), out);
     }
 
-    function _withdraw(address proxy, address market, uint256 amount) internal {
-        bytes memory out =
-            _proxyCall(proxy, market, abi.encodeWithSelector(CErc20Interface.redeemUnderlying.selector, amount));
+    function _withdraw(address proxy, address market, address underlying, uint256 amount)
+        internal
+        returns (uint256 redeemed)
+    {
+        bytes memory out;
+
+        if (amount == 0) {
+            // Withdraw-all sentinel: redeem the proxy's full cToken balance at the current exchange
+            // rate instead of a fixed underlying amount, so no dust cTokens remain regardless of
+            // exchange-rate drift between intent signing and execution.
+            uint256 cTokenBalance = IERC20(market).balanceOf(proxy);
+            uint256 underlyingBefore = IERC20(underlying).balanceOf(proxy);
+            out = _proxyCall(proxy, market, abi.encodeWithSelector(CErc20Interface.redeem.selector, cTokenBalance));
+            redeemed = IERC20(underlying).balanceOf(proxy) - underlyingBefore;
+        } else {
+            out = _proxyCall(proxy, market, abi.encodeWithSelector(CErc20Interface.redeemUnderlying.selector, amount));
+            redeemed = amount;
+        }
+
         _requireSecurdSuccess(uint8(XRPLSecurdTypes.ActionType.WITHDRAW), out);
     }
 

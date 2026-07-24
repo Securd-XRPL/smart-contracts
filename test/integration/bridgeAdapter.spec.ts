@@ -546,4 +546,240 @@ describe("XRPLSecurdBridgeAdapter integration", function () {
     // Allowance should be 0 — not stuck at the pre-mint approval amount
     expect(await token.allowance(proxyAddr, revertingMarket.target)).to.equal(0);
   });
+
+  it("supports repay-all via the type(uint256).max sentinel, clearing accrued-interest dust", async function () {
+    const { signer, its, token, market, factory, adapter, tokenId, xrplAccount } = await deployFixture();
+
+    // Establish the proxy with a small supply, then simulate a borrow whose debt has since accrued
+    // interest beyond what the client could have known when it signed the intent.
+    const supplyIntent = {
+      intentId: randomIntentId("repay-all-setup"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.SUPPLY,
+      amount: 1_000n,
+      nonce: 0,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+    await ethers.provider.send("hardhat_setBalance", [its.target, "0x1000000000000000000"]);
+    await adapter
+      .connect(await ethers.getImpersonatedSigner(its.target as string))
+      .executeWithInterchainToken(
+        ethers.ZeroHash,
+        "xrpl-ledger",
+        ethers.toUtf8Bytes("source-app"),
+        encodeSignedIntent(await signIntent(adapter.target as string, signer, supplyIntent)),
+        tokenId,
+        token.target,
+        supplyIntent.amount
+      );
+
+    const proxyAddress = await factory.proxyOf(xrplAccount);
+    // Principal was 10_000; 5 units of interest accrued between signing and execution.
+    await market.setBorrowBalance(proxyAddress, 10_005n);
+
+    const repayAllIntent = {
+      intentId: randomIntentId("repay-all"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.REPAY,
+      amount: ethers.MaxUint256,
+      nonce: 1,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+
+    await expect(
+      adapter
+        .connect(await ethers.getImpersonatedSigner(its.target as string))
+        .executeWithInterchainToken(
+          ethers.ZeroHash,
+          "xrpl-ledger",
+          ethers.toUtf8Bytes("source-app"),
+          encodeSignedIntent(await signIntent(adapter.target as string, signer, repayAllIntent)),
+          tokenId,
+          token.target,
+          10_005n // actual bridged amount: the live debt the client queried before sending
+        )
+    ).to.emit(adapter, "IntentExecuted");
+
+    // Debt is fully cleared — no dust left behind.
+    expect(await market.borrowBalanceOf(proxyAddress)).to.equal(0n);
+    // Proxy allowance to the market was reset after repay.
+    expect(await token.allowance(proxyAddress, market.target)).to.equal(0n);
+  });
+
+  it("rejects repay-all when the bridged token amount cannot cover the live debt", async function () {
+    const { signer, its, token, market, factory, adapter, tokenId, xrplAccount } = await deployFixture();
+
+    const supplyIntent = {
+      intentId: randomIntentId("repay-all-underfunded-setup"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.SUPPLY,
+      amount: 1_000n,
+      nonce: 0,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+    await ethers.provider.send("hardhat_setBalance", [its.target, "0x1000000000000000000"]);
+    await adapter
+      .connect(await ethers.getImpersonatedSigner(its.target as string))
+      .executeWithInterchainToken(
+        ethers.ZeroHash,
+        "xrpl-ledger",
+        ethers.toUtf8Bytes("source-app"),
+        encodeSignedIntent(await signIntent(adapter.target as string, signer, supplyIntent)),
+        tokenId,
+        token.target,
+        supplyIntent.amount
+      );
+
+    const proxyAddress = await factory.proxyOf(xrplAccount);
+    await market.setBorrowBalance(proxyAddress, 10_005n);
+
+    const repayAllIntent = {
+      intentId: randomIntentId("repay-all-underfunded"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.REPAY,
+      amount: ethers.MaxUint256,
+      nonce: 1,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+
+    // Client under-sent relative to the live debt — the adapter must not reach into its general
+    // balance to make up the difference; the whole call should revert instead.
+    await expect(
+      adapter
+        .connect(await ethers.getImpersonatedSigner(its.target as string))
+        .executeWithInterchainToken(
+          ethers.ZeroHash,
+          "xrpl-ledger",
+          ethers.toUtf8Bytes("source-app"),
+          encodeSignedIntent(await signIntent(adapter.target as string, signer, repayAllIntent)),
+          tokenId,
+          token.target,
+          9_000n
+        )
+    ).to.be.reverted;
+  });
+
+  it("still enforces the exact amount match for ordinary (non-sentinel) repay", async function () {
+    const { signer, its, token, market, tokenId, adapter, xrplAccount } = await deployFixture();
+
+    const repayIntent = {
+      intentId: randomIntentId("repay-exact-mismatch"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.REPAY,
+      amount: 4_000n,
+      nonce: 0,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+
+    await ethers.provider.send("hardhat_setBalance", [its.target, "0x1000000000000000000"]);
+    await expect(
+      adapter
+        .connect(await ethers.getImpersonatedSigner(its.target as string))
+        .executeWithInterchainToken(
+          ethers.ZeroHash,
+          "xrpl-ledger",
+          ethers.toUtf8Bytes("source-app"),
+          encodeSignedIntent(await signIntent(adapter.target as string, signer, repayIntent)),
+          tokenId,
+          token.target,
+          4_001n
+        )
+    ).to.be.revertedWithCustomError(adapter, "AmountMismatch");
+  });
+
+  it("supports withdraw-all via the amount == 0 sentinel, redeeming the full cToken balance", async function () {
+    const { signer, gateway, its, token, market, factory, adapter, tokenId, xrplAccount } = await deployFixture();
+
+    await ethers.provider.send("hardhat_setBalance", [adapter.target, "0x2386F26FC10000"]);
+    await ethers.provider.send("hardhat_setBalance", [gateway.target, "0x1000000000000000000"]);
+
+    // Establish the proxy via a supply, then simulate holding cTokens whose underlying value (at the
+    // current exchange rate) has grown past what the client could have encoded when signing.
+    const supplyIntent = {
+      intentId: randomIntentId("withdraw-all-setup"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.SUPPLY,
+      amount: 1_000n,
+      nonce: 0,
+      deadline: 0,
+      destinationAddress: "0x",
+      version: 1
+    };
+    await ethers.provider.send("hardhat_setBalance", [its.target, "0x1000000000000000000"]);
+    await adapter
+      .connect(await ethers.getImpersonatedSigner(its.target as string))
+      .executeWithInterchainToken(
+        ethers.ZeroHash,
+        "xrpl-ledger",
+        ethers.toUtf8Bytes("source-app"),
+        encodeSignedIntent(await signIntent(adapter.target as string, signer, supplyIntent)),
+        tokenId,
+        token.target,
+        supplyIntent.amount
+      );
+
+    const proxyAddress = await factory.proxyOf(xrplAccount);
+    // The market must hold enough underlying to cover the redemption below.
+    await token.mint(market.target, 20_000_000n);
+    await market.setCTokenBalance(proxyAddress, 10_000_000n);
+    await market.setExchangeRateMantissa(ethers.parseUnits("1.0001", 18)); // exchange rate drifted up since signing
+
+    const withdrawAllIntent = {
+      intentId: randomIntentId("withdraw-all"),
+      xrplAccount,
+      market: market.target as string,
+      underlying: token.target as string,
+      actionType: ActionType.WITHDRAW,
+      amount: 0n, // WITHDRAW_ALL sentinel
+      nonce: 1,
+      deadline: 0,
+      destinationAddress: ethers.hexlify(ethers.toUtf8Bytes("rDestination")),
+      version: 1
+    };
+
+    await expect(
+      adapter
+        .connect(await ethers.getImpersonatedSigner(gateway.target as string))
+        .execute(
+          ethers.ZeroHash,
+          "xrpl-ledger",
+          "source-app",
+          encodeSignedIntent(await signIntent(adapter.target as string, signer, withdrawAllIntent))
+        )
+    )
+      .to.emit(adapter, "IntentExecuted")
+      .and.to.emit(adapter, "EgressInitiated");
+
+    // All cTokens were redeemed — no dust left in the proxy.
+    expect(await market.balanceOf(proxyAddress)).to.equal(0n);
+
+    // The bridged-out amount is the actual redeemed underlying (10_000_000 * 1.0001), not the
+    // literal 0 sentinel that was signed in the intent.
+    const expectedRedeemed = (10_000_000n * ethers.parseUnits("1.0001", 18)) / 10n ** 18n;
+    const transfer = await its.lastTransfer();
+    expect(transfer.amount).to.equal(expectedRedeemed);
+    expect(expectedRedeemed).to.not.equal(10_000_000n);
+  });
 });
