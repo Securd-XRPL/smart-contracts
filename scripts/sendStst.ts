@@ -1,6 +1,6 @@
 import { Client, Wallet, Payment } from "xrpl";
 
-const DESTINATION  = "rPpamGtvayxx97LcxM7dWhBSJsPCzdUCAB";
+const DESTINATION  = "rBSKvJNZWwLPUgHR17xjCSWSACQyCsFnCt";
 const STST_ISSUER  = "rNrjh1KGZk2jBR3wPfAQnoidtFFYQKbQn2";
 const STST_HEX     = "5354535400000000000000000000000000000000";
 const AMOUNT       = "1000";
